@@ -88,7 +88,7 @@ function createNFTButton(): HTMLButtonElement {
   btn.innerHTML = `
     <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
       <path d="M12 2L2 7l10 5 10-5-10-5zm0 6.5l10 5v8l-10-5-10 5v-8l10-5z" 
-        fill="currentColor"/>
+        fill="rgb(29,155,240)"/>
     </svg>
   `
 
