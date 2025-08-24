@@ -61,7 +61,7 @@ function createNFTButton(): HTMLButtonElement {
   const btn = document.createElement("button")
   btn.id = BTN_ID
   btn.type = "button"
-  btn.setAttribute("aria-label", "Insert NFT")
+  btn.setAttribute("aria-label", "NFT Inventory")
 
   // Make it visually consistent with other buttons in the row
   btn.style.display = "inline-flex"
