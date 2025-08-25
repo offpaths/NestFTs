@@ -1,16 +1,10 @@
-import { Socket } from "dgram"
 import cssText from "data-text:~style.css"
-import { TableIcon } from "lucide-react"
-import type { PlasmoCSConfig } from "plasmo"
 
-import { CountButton } from "~features/count-button"
+import AppConfig from "~utils/app-config"
+import globalContentConfig from "~utils/content-config"
 
-export const config: PlasmoCSConfig = {
-  matches: ["https://twitter.com/*", "https://x.com/*"],
-  run_at: "document_idle"
-}
-
-const BTN_ID = "sf-nft-backpack-italic-neighbor"
+const plasmoconfig = globalContentConfig
+const appconfig = AppConfig
 
 document.querySelectorAll('div[data-testid="toolBar"]')
 
@@ -57,9 +51,8 @@ function findComposerFooter(toolbar: Element): HTMLElement | null {
   return footer ?? null
 }
 
-function createNFTButton(): HTMLButtonElement {
-  const btn = document.createElement("button")
-  btn.id = BTN_ID
+function setButtonStyleAndAttribs(btn: HTMLButtonElement) {
+  btn.id = appconfig.BTN_ID
   btn.type = "button"
   btn.setAttribute("aria-label", "NFT Inventory")
 
@@ -77,6 +70,19 @@ function createNFTButton(): HTMLButtonElement {
   btn.style.transition = "background-color 0.2s ease-in-out"
   btn.style.color = "rgb(231, 233, 234)" // matches Twitter/X icons in dark mode
 
+  btn.innerHTML = `
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+      <path d="M12 2L2 7l10 5 10-5-10-5zm0 6.5l10 5v8l-10-5-10 5v-8l10-5z" 
+        fill="rgb(29,155,240)"/>
+    </svg>
+  `
+}
+
+function createNFTButton(): HTMLButtonElement {
+  const btn = document.createElement("button")
+
+  setButtonStyleAndAttribs(btn)
+
   // Hover effect like native buttons
   btn.addEventListener("mouseenter", () => {
     btn.style.backgroundColor = "rgba(239, 243, 244, 0.1)"
@@ -85,17 +91,14 @@ function createNFTButton(): HTMLButtonElement {
     btn.style.backgroundColor = "transparent"
   })
 
-  btn.innerHTML = `
-    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-      <path d="M12 2L2 7l10 5 10-5-10-5zm0 6.5l10 5v8l-10-5-10 5v-8l10-5z" 
-        fill="rgb(29,155,240)"/>
-    </svg>
-  `
-
-  btn.addEventListener("click", (e) => {
+  btn.addEventListener("click", (e: MouseEvent) => {
     e.stopPropagation()
-    console.log("NFT button clicked")
-    // TODO: Open NFT picker popup here
+    // Dispatch a custom event with click coordinates
+    window.dispatchEvent(
+      new CustomEvent(appconfig.TOGGLE_EVENT_TYPE, {
+        detail: { x: e.clientX, y: e.clientY, ts: Date.now() }
+      })
+    )
   })
 
   return btn
@@ -103,7 +106,7 @@ function createNFTButton(): HTMLButtonElement {
 
 function injectButton(toolbar: Element) {
   // Avoid duplicates
-  if (toolbar.querySelector(`#${BTN_ID}`)) return
+  if (toolbar.querySelector(`#${appconfig.BTN_ID}`)) return
 
   // Find the scroll snap list container
   const scrollSnapList = toolbar.querySelector(
@@ -116,15 +119,15 @@ function injectButton(toolbar: Element) {
   scrollSnapList.appendChild(nftBtn)
 }
 
-function scanAndInject() {
+function scanAndInjectNiftoryIcon() {
   // Find all toolbars in replies, tweets, and modals
   const toolbars = document.querySelectorAll('div[data-testid="toolBar"]')
   toolbars.forEach(injectButton)
 }
 
 // Watch for SPA navigation and DOM updates
-const observer = new MutationObserver(() => scanAndInject())
+const observer = new MutationObserver(() => scanAndInjectNiftoryIcon())
 observer.observe(document.documentElement, { childList: true, subtree: true })
 
 // First pass on load
-export default scanAndInject()
+export default scanAndInjectNiftoryIcon()
