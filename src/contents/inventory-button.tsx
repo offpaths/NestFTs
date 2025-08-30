@@ -6,8 +6,6 @@ import globalContentConfig from "~utils/content-config"
 const plasmoconfig = globalContentConfig
 const appconfig = AppConfig
 
-document.querySelectorAll('div[data-testid="toolBar"]')
-
 /**
  * Generates a style element with adjusted CSS to work correctly within a Shadow DOM.
  *
@@ -70,12 +68,22 @@ function setButtonStyleAndAttribs(btn: HTMLButtonElement) {
   btn.style.transition = "background-color 0.2s ease-in-out"
   btn.style.color = "rgb(231, 233, 234)" // matches Twitter/X icons in dark mode
 
-  btn.innerHTML = `
-    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-      <path d="M12 2L2 7l10 5 10-5-10-5zm0 6.5l10 5v8l-10-5-10 5v-8l10-5z" 
-        fill="rgb(29,155,240)"/>
-    </svg>
-  `
+  // Create SVG safely without innerHTML to prevent XSS
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+  svg.setAttribute("viewBox", "0 0 24 24")
+  svg.setAttribute("width", "18")
+  svg.setAttribute("height", "18")
+  svg.setAttribute("aria-hidden", "true")
+
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path")
+  path.setAttribute(
+    "d",
+    "M12 2L2 7l10 5 10-5-10-5zm0 6.5l10 5v8l-10-5-10 5v-8l10-5z"
+  )
+  path.setAttribute("fill", "rgb(29,155,240)")
+
+  svg.appendChild(path)
+  btn.appendChild(svg)
 }
 
 function createNFTButton(): HTMLButtonElement {
@@ -93,12 +101,15 @@ function createNFTButton(): HTMLButtonElement {
 
   btn.addEventListener("click", (e: MouseEvent) => {
     e.stopPropagation()
+    console.log("NFT button clicked!", { x: e.clientX, y: e.clientY })
+
     // Dispatch a custom event with click coordinates
-    window.dispatchEvent(
-      new CustomEvent(appconfig.TOGGLE_EVENT_TYPE, {
-        detail: { x: e.clientX, y: e.clientY, ts: Date.now() }
-      })
-    )
+    const event = new CustomEvent(appconfig.TOGGLE_EVENT_TYPE, {
+      detail: { x: e.clientX, y: e.clientY, ts: Date.now() }
+    })
+
+    console.log("Dispatching event:", appconfig.TOGGLE_EVENT_TYPE, event.detail)
+    window.dispatchEvent(event)
   })
 
   return btn
@@ -106,23 +117,35 @@ function createNFTButton(): HTMLButtonElement {
 
 function injectButton(toolbar: Element) {
   // Avoid duplicates
-  if (toolbar.querySelector(`#${appconfig.BTN_ID}`)) return
+  if (toolbar.querySelector(`#${appconfig.BTN_ID}`)) {
+    console.log("Button already exists in this toolbar, skipping")
+    return
+  }
 
   // Find the scroll snap list container
   const scrollSnapList = toolbar.querySelector(
     '[data-testid="ScrollSnap-List"]'
   )
-  if (!scrollSnapList) return
+  if (!scrollSnapList) {
+    console.log("No ScrollSnap-List found in toolbar")
+    return
+  }
 
   // Append our button to the end of the scroll snap list
+  console.log("Creating and injecting NFT button")
   const nftBtn = createNFTButton()
   scrollSnapList.appendChild(nftBtn)
+  console.log("NFT button successfully injected with ID:", nftBtn.id)
 }
 
 function scanAndInjectNiftoryIcon() {
   // Find all toolbars in replies, tweets, and modals
   const toolbars = document.querySelectorAll('div[data-testid="toolBar"]')
-  toolbars.forEach(injectButton)
+  console.log(`Found ${toolbars.length} toolbars on page`)
+  toolbars.forEach((toolbar, index) => {
+    console.log(`Injecting button into toolbar ${index + 1}`)
+    injectButton(toolbar)
+  })
 }
 
 // Watch for SPA navigation and DOM updates
@@ -130,4 +153,9 @@ const observer = new MutationObserver(() => scanAndInjectNiftoryIcon())
 observer.observe(document.documentElement, { childList: true, subtree: true })
 
 // First pass on load
-export default scanAndInjectNiftoryIcon()
+scanAndInjectNiftoryIcon()
+
+// Export empty component for Plasmo (content scripts don't need to export components)
+export default function () {
+  return null
+}

@@ -1,20 +1,23 @@
 import { useEffect, useState } from "react"
 
-import { CountButton } from "~features/count-button"
-
 import "~style.css"
 
 function IndexPopup() {
   const [currentUrl, setCurrentUrl] = useState<string>("")
 
+  const getCurrentUrl = async () => {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+      setCurrentUrl(tab?.url || "Unable to get URL")
+    } catch (error) {
+      console.error("Failed to get current URL:", error)
+      setCurrentUrl("Error getting URL")
+    }
+  }
+
   useEffect(() => {
     getCurrentUrl()
-  }, [currentUrl])
-
-  const getCurrentUrl = async () => {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-    setCurrentUrl(tab.url)
-  }
+  }, []) // Removed currentUrl dependency to prevent infinite loop
 
   return (
     <div className="plasmo-flex plasmo-items-center plasmo-justify-center plasmo-h-16 plasmo-w-40">

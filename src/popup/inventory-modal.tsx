@@ -1,24 +1,39 @@
 import React, { useEffect } from "react"
 
+import { useAbstractWallet } from "~hooks/useAbstractWallet"
+import type { NFTFetchError, NFTMetadata } from "~services/nft-service"
+import { formatAddress, getChainDisplayName, getWalletChainDisplayName } from "~utils/abstract-wallet"
+
 type Props = {
-  open: Boolean
+  open: boolean
   onClose: () => void
   position: { mode: "center" } | { mode: "anchor"; x: number; y: number }
-  wallets: string[]
-  onWalletConnect: (wallet: string) => void
-  nfts: Array<{ id?: string; src?: string; title?: string }>
-  onPickNFT: (nft: any) => void
+  nfts: NFTMetadata[]
+  onPickNFT: (nft: NFTMetadata) => void
+  isLoading?: boolean
+  errors?: NFTFetchError[]
+  fromCache?: boolean
 }
 
 function InventoryModal({
   open,
   onClose,
   position,
-  wallets,
-  onWalletConnect,
   nfts,
-  onPickNFT
+  onPickNFT,
+  isLoading = false,
+  errors = [],
+  fromCache = false
 }: Props) {
+  const { isConnected, address, isConnecting, error, login, logout, chain, chainId } =
+    useAbstractWallet()
+
+  // Retry function for failed NFT loads
+  const handleRetry = () => {
+    // Trigger a refresh by calling onClose and then reopening
+    // In a real implementation, you might want a more direct retry mechanism
+    window.dispatchEvent(new CustomEvent("NFTORY_RETRY_FETCH"))
+  }
   useEffect(() => {
     const onEsc = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose()
@@ -77,6 +92,12 @@ function InventoryModal({
           padding: 16,
           overflow: "hidden"
         }}>
+        <style>{`
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `}</style>
         <header
           style={{
             display: "flex",
@@ -103,24 +124,179 @@ function InventoryModal({
         </header>
 
         <section style={{ display: "grid", gap: 8, marginBottom: 12 }}>
-          <div style={{ fontSize: 12, opacity: 0.75 }}>Connect a wallet</div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {wallets.map((w) => (
+          {/* Status indicators */}
+          {fromCache && (
+            <div
+              style={{
+                fontSize: 11,
+                color: "rgb(255, 212, 59)",
+                padding: "4px 8px",
+                borderRadius: 4,
+                background: "rgba(255, 212, 59, 0.1)",
+                border: "1px solid rgba(255, 212, 59, 0.3)"
+              }}>
+              📄 Showing cached results
+            </div>
+          )}
+
+          {/* Error messages */}
+          {errors.length > 0 && errors.some((e) => e.isConfigurationError) && (
+            <div
+              style={{
+                fontSize: 12,
+                color: "rgb(255, 204, 102)",
+                padding: "8px 12px",
+                borderRadius: 6,
+                background: "rgba(255, 204, 102, 0.1)",
+                border: "1px solid rgba(255, 204, 102, 0.3)"
+              }}>
+              ⚠️ Configuration needed:{" "}
+              {errors.find((e) => e.isConfigurationError)?.message}
+              {errors.find((e) => e.suggestion) && (
+                <div style={{ marginTop: 4, fontSize: 11, opacity: 0.9 }}>
+                  💡 {errors.find((e) => e.suggestion)?.suggestion}
+                </div>
+              )}
+            </div>
+          )}
+
+          {errors.length > 0 && errors.some((e) => !e.isConfigurationError) && (
+            <div
+              style={{
+                fontSize: 12,
+                color: "rgb(255, 107, 107)",
+                padding: "8px 12px",
+                borderRadius: 6,
+                background: "rgba(255, 107, 107, 0.1)",
+                border: "1px solid rgba(255, 107, 107, 0.3)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between"
+              }}>
+              <span>
+                ❌ {errors.find((e) => !e.isConfigurationError)?.message}
+              </span>
               <button
-                key={w}
-                onClick={() => onWalletConnect(w)}
+                onClick={handleRetry}
                 style={{
-                  padding: "8px 12px",
-                  borderRadius: 999,
-                  border: "1px solid rgba(239,243,244,0.2)",
-                  background: "transparent",
-                  color: "inherit",
-                  cursor: "pointer"
+                  padding: "4px 8px",
+                  borderRadius: 4,
+                  border: "1px solid rgba(255, 107, 107, 0.5)",
+                  background: "rgba(255, 107, 107, 0.1)",
+                  color: "rgb(255, 107, 107)",
+                  cursor: "pointer",
+                  fontSize: 10
                 }}>
-                {w}
+                Retry
               </button>
-            ))}
-          </div>
+            </div>
+          )}
+          {!isConnected ? (
+            <>
+              <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 8 }}>
+                Connect your wallet to view NFTs
+              </div>
+              <div style={{ 
+                fontSize: 11, 
+                opacity: 0.6, 
+                marginBottom: 12,
+                lineHeight: 1.4
+              }}>
+                ✨ Abstract provides gasless transactions<br/>
+                🔒 Create account with email or social login<br/>
+                🌍 Access your NFTs across all apps
+              </div>
+              {error && (
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: "#ff6b6b",
+                    padding: "8px 12px",
+                    borderRadius: 6,
+                    background: "rgba(255,107,107,0.1)"
+                  }}>
+                  {error}
+                </div>
+              )}
+              <button
+                onClick={login}
+                disabled={isConnecting}
+                style={{
+                  padding: "12px 20px",
+                  borderRadius: 999,
+                  border: "1px solid rgb(29,155,240)",
+                  background: isConnecting
+                    ? "rgba(29,155,240,0.1)"
+                    : "rgb(29,155,240)",
+                  color: isConnecting ? "rgba(255,255,255,0.7)" : "#fff",
+                  cursor: isConnecting ? "not-allowed" : "pointer",
+                  fontWeight: 600,
+                  transition: "all 0.2s ease",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "8px"
+                }}>
+                {isConnecting && (
+                  <div
+                    style={{
+                      width: 14,
+                      height: 14,
+                      border: "2px solid rgba(255,255,255,0.3)",
+                      borderTop: "2px solid #fff",
+                      borderRadius: "50%",
+                      animation: "spin 1s linear infinite"
+                    }}></div>
+                )}
+                {isConnecting ? "Connecting to Abstract..." : "🚀 Connect with Abstract"}
+              </button>
+            </>
+          ) : (
+            <>
+              <div style={{ fontSize: 12, opacity: 0.75 }}>
+                Connected wallet
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  background: "rgba(29,155,240,0.1)",
+                  border: "1px solid rgba(29,155,240,0.3)"
+                }}>
+                <div
+                  style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  <span style={{ fontSize: 14, color: "rgb(29,155,240)" }}>
+                    {address && formatAddress(address)}
+                  </span>
+                  {/* Show actual wallet chain, not NFT fetching chain */}
+                  <span
+                    style={{
+                      fontSize: 11,
+                      opacity: 0.8,
+                      color: "rgb(29,155,240)"
+                    }}>
+                    {getWalletChainDisplayName(chainId || 1)} → Ethereum NFTs
+                  </span>
+                </div>
+                <button
+                  onClick={logout}
+                  style={{
+                    padding: "4px 8px",
+                    borderRadius: 4,
+                    border: "none",
+                    background: "rgba(255,255,255,0.1)",
+                    color: "#fff",
+                    cursor: "pointer",
+                    fontSize: 12
+                  }}>
+                  Disconnect
+                </button>
+              </div>
+            </>
+          )}
         </section>
 
         <section
@@ -131,14 +307,49 @@ function InventoryModal({
             overflow: "auto",
             maxHeight: 240
           }}>
-          {nfts.length === 0 ? (
-            <div style={{ gridColumn: "1 / -1", opacity: 0.7, fontSize: 13 }}>
-              Your NFTs will appear here after connecting
+          {isLoading ? (
+            <div
+              style={{
+                gridColumn: "1 / -1",
+                opacity: 0.7,
+                fontSize: 13,
+                textAlign: "center",
+                padding: "20px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8
+              }}>
+              <div
+                style={{
+                  width: 16,
+                  height: 16,
+                  border: "2px solid rgba(29,155,240,0.3)",
+                  borderTop: "2px solid rgb(29,155,240)",
+                  borderRadius: "50%",
+                  animation: "spin 1s linear infinite"
+                }}></div>
+              Loading NFTs...
+            </div>
+          ) : nfts.length === 0 ? (
+            <div
+              style={{
+                gridColumn: "1 / -1",
+                opacity: 0.7,
+                fontSize: 13,
+                textAlign: "center",
+                padding: "20px"
+              }}>
+              {!isConnected
+                ? "Connect your wallet to view NFTs"
+                : errors.length > 0
+                  ? "Failed to load NFTs - check the errors above"
+                  : "No NFTs found in your wallet"}
             </div>
           ) : (
             nfts.map((n) => (
               <button
-                key={n.id ?? n.src ?? Math.random()}
+                key={n.id}
                 onClick={() => onPickNFT(n)}
                 style={{
                   aspectRatio: "1 / 1",
@@ -149,29 +360,51 @@ function InventoryModal({
                   background: "transparent",
                   cursor: "pointer"
                 }}>
-                {n.src ? (
-                  <img
-                    src={n.src}
-                    alt={n.title ?? "NFT"}
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover"
-                    }}
-                  />
-                ) : (
+                <div
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    position: "relative",
+                    background: "rgba(239,243,244,0.1)"
+                  }}>
+                  {n.image ? (
+                    <img
+                      src={n.image}
+                      alt={n.name}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover"
+                      }}
+                      onError={(e) => {
+                        // Show fallback instead of hiding
+                        e.currentTarget.style.display = "none"
+                        const fallback = e.currentTarget.nextSibling as HTMLElement
+                        if (fallback) {
+                          fallback.style.display = "grid"
+                        }
+                      }}
+                      onLoad={() => {
+                        console.log(`Successfully loaded NFT image: ${n.name}`)
+                      }}
+                    />
+                  ) : null}
                   <div
                     style={{
                       width: "100%",
                       height: "100%",
-                      display: "grid",
+                      display: n.image ? "none" : "grid",
                       placeItems: "center",
                       opacity: 0.6,
-                      fontSize: 12
+                      fontSize: 10,
+                      textAlign: "center",
+                      padding: 4,
+                      background: "rgba(239,243,244,0.1)"
                     }}>
-                    No image
+                    🖼️<br />
+                    {n.name || "NFT"}
                   </div>
-                )}
+                </div>
               </button>
             ))
           )}
