@@ -25,6 +25,9 @@ yarn-error.log*
 # local env files
 .env*
 
+# API Keys configuration - keep secure
+src/config/api-keys.ts
+
 out/
 build/
 dist/
