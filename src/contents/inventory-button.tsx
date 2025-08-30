@@ -2,9 +2,12 @@ import cssText from "data-text:~style.css"
 
 import AppConfig from "~utils/app-config"
 import globalContentConfig from "~utils/content-config"
+import { createLogger } from "~utils/logger"
+import { BUTTON_CONSTANTS, ANIMATION_CONSTANTS } from "~utils/ui-constants"
 
 const plasmoconfig = globalContentConfig
 const appconfig = AppConfig
+const log = createLogger('InventoryButton')
 
 /**
  * Generates a style element with adjusted CSS to work correctly within a Shadow DOM.
@@ -58,21 +61,21 @@ function setButtonStyleAndAttribs(btn: HTMLButtonElement) {
   btn.style.display = "inline-flex"
   btn.style.alignItems = "center"
   btn.style.justifyContent = "center"
-  btn.style.width = "34px"
-  btn.style.height = "34px"
-  btn.style.marginLeft = "4px"
+  btn.style.width = BUTTON_CONSTANTS.WIDTH
+  btn.style.height = BUTTON_CONSTANTS.HEIGHT
+  btn.style.marginLeft = BUTTON_CONSTANTS.MARGIN_LEFT
   btn.style.border = "none"
   btn.style.background = "transparent"
   btn.style.cursor = "pointer"
-  btn.style.borderRadius = "9999px"
-  btn.style.transition = "background-color 0.2s ease-in-out"
-  btn.style.color = "rgb(231, 233, 234)" // matches Twitter/X icons in dark mode
+  btn.style.borderRadius = BUTTON_CONSTANTS.BORDER_RADIUS
+  btn.style.transition = ANIMATION_CONSTANTS.BUTTON_TRANSITION
+  btn.style.color = BUTTON_CONSTANTS.ICON_COLOR
 
   // Create SVG safely without innerHTML to prevent XSS
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg")
   svg.setAttribute("viewBox", "0 0 24 24")
-  svg.setAttribute("width", "18")
-  svg.setAttribute("height", "18")
+  svg.setAttribute("width", BUTTON_CONSTANTS.ICON_WIDTH)
+  svg.setAttribute("height", BUTTON_CONSTANTS.ICON_HEIGHT)
   svg.setAttribute("aria-hidden", "true")
 
   const path = document.createElementNS("http://www.w3.org/2000/svg", "path")
@@ -80,7 +83,7 @@ function setButtonStyleAndAttribs(btn: HTMLButtonElement) {
     "d",
     "M12 2L2 7l10 5 10-5-10-5zm0 6.5l10 5v8l-10-5-10 5v-8l10-5z"
   )
-  path.setAttribute("fill", "rgb(29,155,240)")
+  path.setAttribute("fill", BUTTON_CONSTANTS.ICON_FILL_COLOR)
 
   svg.appendChild(path)
   btn.appendChild(svg)
@@ -93,7 +96,7 @@ function createNFTButton(): HTMLButtonElement {
 
   // Hover effect like native buttons
   btn.addEventListener("mouseenter", () => {
-    btn.style.backgroundColor = "rgba(239, 243, 244, 0.1)"
+    btn.style.backgroundColor = BUTTON_CONSTANTS.HOVER_BG_COLOR
   })
   btn.addEventListener("mouseleave", () => {
     btn.style.backgroundColor = "transparent"
@@ -101,14 +104,14 @@ function createNFTButton(): HTMLButtonElement {
 
   btn.addEventListener("click", (e: MouseEvent) => {
     e.stopPropagation()
-    console.log("NFT button clicked!", { x: e.clientX, y: e.clientY })
+    log.debug("NFT button clicked!", { x: e.clientX, y: e.clientY })
 
     // Dispatch a custom event with click coordinates
     const event = new CustomEvent(appconfig.TOGGLE_EVENT_TYPE, {
       detail: { x: e.clientX, y: e.clientY, ts: Date.now() }
     })
 
-    console.log("Dispatching event:", appconfig.TOGGLE_EVENT_TYPE, event.detail)
+    log.debug("Dispatching event:", { eventType: appconfig.TOGGLE_EVENT_TYPE, detail: event.detail })
     window.dispatchEvent(event)
   })
 
@@ -118,7 +121,7 @@ function createNFTButton(): HTMLButtonElement {
 function injectButton(toolbar: Element) {
   // Avoid duplicates
   if (toolbar.querySelector(`#${appconfig.BTN_ID}`)) {
-    console.log("Button already exists in this toolbar, skipping")
+    log.debug("Button already exists in this toolbar, skipping")
     return
   }
 
@@ -127,23 +130,23 @@ function injectButton(toolbar: Element) {
     '[data-testid="ScrollSnap-List"]'
   )
   if (!scrollSnapList) {
-    console.log("No ScrollSnap-List found in toolbar")
+    log.debug("No ScrollSnap-List found in toolbar")
     return
   }
 
   // Append our button to the end of the scroll snap list
-  console.log("Creating and injecting NFT button")
+  log.debug("Creating and injecting NFT button")
   const nftBtn = createNFTButton()
   scrollSnapList.appendChild(nftBtn)
-  console.log("NFT button successfully injected with ID:", nftBtn.id)
+  log.debug("NFT button successfully injected with ID:", nftBtn.id)
 }
 
 function scanAndInjectNiftoryIcon() {
   // Find all toolbars in replies, tweets, and modals
   const toolbars = document.querySelectorAll('div[data-testid="toolBar"]')
-  console.log(`Found ${toolbars.length} toolbars on page`)
+  log.debug(`Found ${toolbars.length} toolbars on page`)
   toolbars.forEach((toolbar, index) => {
-    console.log(`Injecting button into toolbar ${index + 1}`)
+    log.debug(`Injecting button into toolbar ${index + 1}`)
     injectButton(toolbar)
   })
 }
@@ -151,6 +154,22 @@ function scanAndInjectNiftoryIcon() {
 // Watch for SPA navigation and DOM updates
 const observer = new MutationObserver(() => scanAndInjectNiftoryIcon())
 observer.observe(document.documentElement, { childList: true, subtree: true })
+
+// Cleanup observer when page unloads to prevent memory leaks
+const cleanupObserver = () => {
+  observer.disconnect()
+}
+
+// Listen for page unload events
+window.addEventListener('beforeunload', cleanupObserver)
+window.addEventListener('pagehide', cleanupObserver)
+
+// For SPA navigation, also listen for visibility change
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    cleanupObserver()
+  }
+})
 
 // First pass on load
 scanAndInjectNiftoryIcon()

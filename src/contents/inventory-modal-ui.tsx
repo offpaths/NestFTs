@@ -6,10 +6,12 @@ import InventoryModal from "~popup/inventory-modal"
 import AppConfig from "~utils/app-config"
 import globalContentConfig from "~utils/content-config"
 import { useAbstractWallet } from "~hooks/useAbstractWallet"
-import { fetchUserNFTsWithCache, type NFTMetadata, type NFTFetchError } from "~services/nft-service"
+import { fetchUserNFTsWithCache, type NFTMetadata, type NFTFetchError, getNFTDataInfo } from "~services/nft-service"
 import { formatAddress } from "~utils/abstract-wallet"
+import { createLogger } from "~utils/logger"
 
 export const plasmoconfig = globalContentConfig
+const log = createLogger('InventoryModalUI')
 
 function ensureShadowRoot() {
   let host = document.getElementById(AppConfig.HOST_ID)
@@ -43,26 +45,29 @@ function NFTModalContent() {
   const [isLoadingNFTs, setIsLoadingNFTs] = useState(false)
   const [fetchErrors, setFetchErrors] = useState<NFTFetchError[]>([])
   const [fromCache, setFromCache] = useState(false)
+  
+  // Calculate test data info
+  const nftDataInfo = useMemo(() => getNFTDataInfo(nfts), [nfts])
 
   const { isConnected, address, chain, chainId } = useAbstractWallet()
   const [retryTrigger, setRetryTrigger] = useState(0)
 
   useEffect(() => {
-    console.log("Setting up modal event listener for:", AppConfig.TOGGLE_EVENT_TYPE)
+    log.debug("Setting up modal event listener for:", AppConfig.TOGGLE_EVENT_TYPE)
     
     const onToggle = (e: Event) => {
-      console.log("Modal toggle event received:", e)
+      log.debug("Modal toggle event received:", e)
       const detail = (e as CustomEvent).detail as { x?: number; y?: number }
-      console.log("Event detail:", detail)
+      log.debug("Event detail:", detail)
 
       if (detail?.x && detail?.y) {
-        console.log("Setting anchor position:", { x: detail.x, y: detail.y })
+        log.debug("Setting anchor position:", { x: detail.x, y: detail.y })
         setAnchor({ x: detail.x, y: detail.y })
       }
 
-      console.log("Toggling modal open state")
+      log.debug("Toggling modal open state")
       setOpen((o) => {
-        console.log("Modal state changing from", o, "to", !o)
+        log.debug("Modal state changing", { from: o, to: !o })
         return !o
       })
     }
@@ -72,14 +77,14 @@ function NFTModalContent() {
       onToggle as EventListener
     )
     const onRetry = () => {
-      console.log("Retry NFT fetch event received")
+      log.debug("Retry NFT fetch event received")
       setRetryTrigger(prev => prev + 1)
     }
 
     window.addEventListener('NFTORY_RETRY_FETCH', onRetry)
     
     return () => {
-      console.log("Cleaning up modal event listeners")
+      log.debug("Cleaning up modal event listeners")
       window.removeEventListener(
         AppConfig.TOGGLE_EVENT_TYPE,
         onToggle as EventListener
@@ -99,7 +104,7 @@ function NFTModalContent() {
         try {
           // Use detected chain or default to ethereum
           const targetChain = chain || 'ethereum'
-          console.log(`Fetching NFTs for chain: ${targetChain}`, {
+          log.debug(`Fetching NFTs for chain: ${targetChain}`, {
             walletChainId: chainId,
             detectedChain: chain,
             address: formatAddress(address)
@@ -112,14 +117,14 @@ function NFTModalContent() {
           
           // Log for debugging
           if (result.errors?.length) {
-            console.warn('NFT fetch completed with errors:', result.errors)
+            log.warn('NFT fetch completed with errors:', result.errors)
           }
           if (result.fromCache) {
-            console.log('NFT data loaded from cache')
+            log.debug('NFT data loaded from cache')
           }
           
         } catch (error) {
-          console.error("Critical NFT fetch failure:", error)
+          log.error("Critical NFT fetch failure:", error)
           setNfts([])
           setFetchErrors([{
             service: 'unknown',
@@ -145,7 +150,7 @@ function NFTModalContent() {
   }, [anchor])
 
   const handlePickNFT = (nft: NFTMetadata) => {
-    console.log("Selected NFT:", nft)
+    log.debug("Selected NFT:", nft)
     // Here you could dispatch an event to notify the parent page
     window.dispatchEvent(new CustomEvent("NFTORY_NFT_SELECTED", { 
       detail: nft 
@@ -163,6 +168,7 @@ function NFTModalContent() {
       isLoading={isLoadingNFTs}
       errors={fetchErrors}
       fromCache={fromCache}
+      nftDataInfo={nftDataInfo}
     />
   )
 }

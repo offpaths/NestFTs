@@ -3,6 +3,10 @@ import React, { useEffect } from "react"
 import { useAbstractWallet } from "~hooks/useAbstractWallet"
 import type { NFTFetchError, NFTMetadata } from "~services/nft-service"
 import { formatAddress, getChainDisplayName, getWalletChainDisplayName } from "~utils/abstract-wallet"
+import { createLogger } from "~utils/logger"
+import { MODAL_CONSTANTS, STATUS_CONSTANTS, ANIMATION_CONSTANTS } from "~utils/ui-constants"
+
+const log = createLogger('InventoryModal')
 
 type Props = {
   open: boolean
@@ -13,6 +17,7 @@ type Props = {
   isLoading?: boolean
   errors?: NFTFetchError[]
   fromCache?: boolean
+  nftDataInfo?: { testCount: number; realCount: number; hasTestData: boolean }
 }
 
 function InventoryModal({
@@ -23,16 +28,18 @@ function InventoryModal({
   onPickNFT,
   isLoading = false,
   errors = [],
-  fromCache = false
+  fromCache = false,
+  nftDataInfo
 }: Props) {
   const { isConnected, address, isConnecting, error, login, logout, chain, chainId } =
     useAbstractWallet()
 
-  // Retry function for failed NFT loads
+  // Enhanced retry function with better UX
   const handleRetry = () => {
-    // Trigger a refresh by calling onClose and then reopening
-    // In a real implementation, you might want a more direct retry mechanism
-    window.dispatchEvent(new CustomEvent("NFTORY_RETRY_FETCH"))
+    // Clear existing errors before retry
+    window.dispatchEvent(new CustomEvent("NFTORY_RETRY_FETCH", {
+      detail: { clearErrors: true, timestamp: Date.now() }
+    }))
   }
   useEffect(() => {
     const onEsc = (e: KeyboardEvent) => {
@@ -51,15 +58,15 @@ function InventoryModal({
             12 shift the anchor point downwards a little so the inventory
             does not go over the button
           */
-          top: `${position.y + 12}px`,
+          top: `${position.y + MODAL_CONSTANTS.ANCHOR_OFFSET_Y}px`,
           /*
-          Subtracting 160 pixels shifts the modal leftwards to align it properly relative to the anchor.
-          This likely accounts for the modal width or desired alignment so 
-          the modal doesn’t appear strictly to the right of the click.
+          Subtracting offset pixels shifts the modal leftwards to align it properly relative to the anchor.
+          This accounts for the modal width and desired alignment so 
+          the modal doesn't appear strictly to the right of the click.
 
-          12 stops the inventory from being cut of at the edge
+          Edge padding prevents the modal from being cut off at the edge
           */
-          left: `${Math.max(position.x - 160, 12)}px`
+          left: `${Math.max(position.x - MODAL_CONSTANTS.ANCHOR_OFFSET_X, MODAL_CONSTANTS.EDGE_PADDING)}px`
         }
       : {}
 
@@ -68,10 +75,10 @@ function InventoryModal({
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 2147483647, // max
+        zIndex: MODAL_CONSTANTS.Z_INDEX,
         display: "grid",
         placeItems: position.mode === "center" ? "center" : "start",
-        background: "rgba(0,0,0,0.3)"
+        background: MODAL_CONSTANTS.OVERLAY_COLOR
       }}
       onClick={onClose}>
       <div
@@ -81,15 +88,15 @@ function InventoryModal({
         style={{
           position: position.mode === "center" ? "relative" : "absolute",
           ...anchored,
-          width: 360,
-          maxWidth: "90vw",
-          maxHeight: "70vh",
-          background: "rgb(21,32,43)",
-          color: "#fff",
-          border: "1px solid rgba(239,243,244,0.2)",
-          borderRadius: 12,
-          boxShadow: "0 8px 28px rgba(0,0,0,0.6)",
-          padding: 16,
+          width: MODAL_CONSTANTS.WIDTH,
+          maxWidth: MODAL_CONSTANTS.MAX_WIDTH,
+          maxHeight: MODAL_CONSTANTS.MAX_HEIGHT,
+          background: MODAL_CONSTANTS.BACKGROUND_COLOR,
+          color: MODAL_CONSTANTS.TEXT_COLOR,
+          border: `1px solid ${MODAL_CONSTANTS.BORDER_COLOR}`,
+          borderRadius: MODAL_CONSTANTS.BORDER_RADIUS,
+          boxShadow: MODAL_CONSTANTS.BOX_SHADOW,
+          padding: MODAL_CONSTANTS.PADDING,
           overflow: "hidden"
         }}>
         <style>{`
@@ -129,13 +136,34 @@ function InventoryModal({
             <div
               style={{
                 fontSize: 11,
-                color: "rgb(255, 212, 59)",
+                color: STATUS_CONSTANTS.CACHE_COLOR,
                 padding: "4px 8px",
                 borderRadius: 4,
-                background: "rgba(255, 212, 59, 0.1)",
-                border: "1px solid rgba(255, 212, 59, 0.3)"
+                background: STATUS_CONSTANTS.CACHE_BG_COLOR,
+                border: `1px solid ${STATUS_CONSTANTS.CACHE_BORDER_COLOR}`
               }}>
               📄 Showing cached results
+            </div>
+          )}
+
+          {/* Test data indicator */}
+          {nftDataInfo?.hasTestData && (
+            <div
+              style={{
+                fontSize: 11,
+                color: "rgb(138, 180, 248)",
+                padding: "6px 10px",
+                borderRadius: 6,
+                background: "rgba(138, 180, 248, 0.1)",
+                border: "1px solid rgba(138, 180, 248, 0.3)",
+                lineHeight: 1.4
+              }}>
+              🧪 {nftDataInfo.testCount > 0 && nftDataInfo.realCount > 0 
+                ? `Showing ${nftDataInfo.realCount} real NFTs + ${nftDataInfo.testCount} test demos`
+                : nftDataInfo.testCount > 0 
+                  ? `Showing ${nftDataInfo.testCount} demo NFTs - real NFTs will appear when available`
+                  : 'Test data detected'
+              }
             </div>
           )}
 
@@ -385,7 +413,7 @@ function InventoryModal({
                         }
                       }}
                       onLoad={() => {
-                        console.log(`Successfully loaded NFT image: ${n.name}`)
+                        log.debug(`Successfully loaded NFT image: ${n.name}`)
                       }}
                     />
                   ) : null}

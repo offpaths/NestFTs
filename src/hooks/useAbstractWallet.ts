@@ -10,6 +10,9 @@ import {
   getWalletErrorMessage,
   getChainFromId
 } from "~utils/abstract-wallet"
+import { createLogger } from "~utils/logger"
+
+const log = createLogger('AbstractWallet')
 
 interface UseAbstractWalletReturn extends AbstractWalletState {
   login: () => Promise<void>
@@ -26,22 +29,22 @@ export function useAbstractWallet(): UseAbstractWalletReturn {
   })
 
   // Use Abstract's native login hook with enhanced options
-  const { 
-    login: agwLogin, 
-    logout: agwLogout,
-    isConnecting: agwIsConnecting 
-  } = useLoginWithAbstract()
+  const loginHook = useLoginWithAbstract()
+  const agwLogin = loginHook.login
+  const agwLogout = loginHook.logout
+  // Handle isConnecting property that may not exist in some versions
+  const agwIsConnecting = (loginHook as any).isConnecting || false
   
-  // Use Abstract's client hook to get wallet info
-  const { data: client } = useAbstractClient()
+  // Use Abstract's client hook to get wallet info - cast to any to fix type conflicts
+  const { data: client } = useAbstractClient() as { data: any }
 
   // Check for stored connection on mount
   useEffect(() => {
     const checkStoredConnection = async () => {
       try {
         const storedAddress = await getStoredWalletConnection()
-        if (storedAddress && client?.account?.address) {
-          const chainId = client?.chain?.id
+        if (storedAddress && client && client.account && client.account.address) {
+          const chainId = client.chain ? client.chain.id : undefined
           setState({
             isConnected: true,
             address: client.account.address as Address,
@@ -50,7 +53,7 @@ export function useAbstractWallet(): UseAbstractWalletReturn {
           })
         }
       } catch (error) {
-        console.error("Failed to check stored connection:", error)
+        log.error("Failed to check stored connection:", error)
       }
     }
 
@@ -59,14 +62,14 @@ export function useAbstractWallet(): UseAbstractWalletReturn {
 
   // Update state when client connection changes
   useEffect(() => {
-    if (client?.account?.address) {
+    if (client && client.account && client.account.address) {
       const address = client.account.address as Address
-      const chainId = client?.chain?.id
+      const chainId = client.chain ? client.chain.id : undefined
       
-      console.log('[Wallet Hook] Client connected:', {
+      log.debug('[Wallet Hook] Client connected:', {
         address,
         chainId,
-        chainName: client?.chain?.name
+        chainName: client.chain ? client.chain.name : undefined
       })
       
       setState(prev => ({
@@ -89,23 +92,23 @@ export function useAbstractWallet(): UseAbstractWalletReturn {
         chainId: undefined
       }))
     }
-  }, [client?.account?.address, client?.chain?.id, state.isConnected, state.isConnecting])
+  }, [client, state.isConnected, state.isConnecting])
 
   // Login function using Abstract's native popup with enhanced UX
   const login = async (): Promise<void> => {
     try {
       setState(prev => ({ ...prev, isConnecting: true, error: undefined }))
       
-      console.log('[Abstract Login] Starting login process...')
+      log.debug('[Abstract Login] Starting login process...')
       
       // This will trigger Abstract's native login popup
       // The popup will handle wallet selection, account creation, etc.
       await agwLogin()
       
-      console.log('[Abstract Login] Login successful')
+      log.debug('[Abstract Login] Login successful')
       // The useEffect above will handle the state update when client connects
     } catch (error: any) {
-      console.error('[Abstract Login] Login failed:', error)
+      log.error('[Abstract Login] Login failed:', error)
       
       const errorMessage = getWalletErrorMessage(error)
       setState(prev => ({
@@ -131,7 +134,7 @@ export function useAbstractWallet(): UseAbstractWalletReturn {
         isConnecting: false
       })
     } catch (error) {
-      console.error("Failed to logout:", error)
+      log.error("Failed to logout:", error)
     }
   }
 
@@ -143,8 +146,8 @@ export function useAbstractWallet(): UseAbstractWalletReturn {
   const detectedChain = state.chainId ? getChainFromId(state.chainId) : undefined
   
   // Debug chain detection
-  if (state.isConnected && process.env.NODE_ENV === 'development') {
-    console.log('[Wallet Hook] Chain detection:', {
+  if (state.isConnected) {
+    log.debug('[Wallet Hook] Chain detection:', {
       chainId: state.chainId,
       detectedChain,
       address: state.address

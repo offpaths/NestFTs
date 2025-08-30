@@ -4,6 +4,11 @@ import { type Address } from "viem"
 
 import { API_KEYS, getAPIKeyStatus } from "~config/api-keys"
 import { formatAddress, isValidAbstractAddress } from "~utils/abstract-wallet"
+import { createLogger } from "~utils/logger"
+import { TIMING_CONSTANTS, VALIDATION_CONSTANTS } from "~utils/ui-constants"
+import { retryNFTFetch } from "~utils/retry-utility"
+
+const log = createLogger('NFTService')
 
 // NFT metadata interface
 export interface NFTMetadata {
@@ -83,12 +88,12 @@ const CHAIN_CONFIGS: Record<SupportedChain, ChainConfig> = {
   }
 }
 
-// Configuration
+// Configuration using constants
 const NFT_API_CONFIG = {
-  REQUEST_TIMEOUT: 15000,
-  MAX_NFTS_PER_REQUEST: 50,
-  RATE_LIMIT_DELAY: 1000,
-  SUPPORTED_IMAGE_FORMATS: [".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"],
+  REQUEST_TIMEOUT: TIMING_CONSTANTS.API_TIMEOUT,
+  MAX_NFTS_PER_REQUEST: VALIDATION_CONSTANTS.MAX_NFTS_PER_REQUEST,
+  RATE_LIMIT_DELAY: TIMING_CONSTANTS.RATE_LIMIT_DELAY,
+  SUPPORTED_IMAGE_FORMATS: VALIDATION_CONSTANTS.SUPPORTED_IMAGE_EXTENSIONS,
   FALLBACK_IMAGE:
     "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect width='100' height='100' fill='%23f0f0f0'/%3E%3Ctext x='50' y='50' text-anchor='middle' dy='0.3em' fill='%23999'%3ENFT%3C/text%3E%3C/svg%3E"
 }
@@ -147,19 +152,7 @@ function validateImageUrl(url: string | null): string {
     )
 
     // Accept URLs from known NFT storage providers even without file extensions
-    const trustedDomains = [
-      "ipfs.io",
-      "gateway.pinata.cloud",
-      "cloudflare-ipfs.com",
-      "i.seadn.io",
-      "openseauserdata.com",
-      "nft-cdn.alchemy.com",
-      "res.cloudinary.com",
-      "arweave.net",
-      "gateway.arweave.net",
-      "gateway.ipfs.io",
-      "api.alchemy.com"
-    ]
+    const trustedDomains = VALIDATION_CONSTANTS.TRUSTED_DOMAINS
 
     const isTrustedDomain = trustedDomains.some((domain) =>
       parsedUrl.hostname.includes(domain)
@@ -198,28 +191,72 @@ function sanitizeNFTMetadata(asset: OpenSeaAsset): NFTMetadata {
 
 // Mock NFTs for Abstract testnet (since there's no indexer yet)
 function generateMockNFTsForAbstractTestnet(): NFTMetadata[] {
-  return [
+  const testNFTs = [
     {
-      id: "abstract-mock-1",
-      name: "Abstract Test NFT #1",
-      image:
-        "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Crect width='200' height='200' fill='%23667eea'/%3E%3Ctext x='100' y='100' text-anchor='middle' dy='0.3em' fill='white' font-size='24'%3ETest NFT%3C/text%3E%3C/svg%3E",
-      description: "A test NFT for Abstract testnet",
-      collection: "Abstract Test Collection",
-      tokenId: "1",
-      contractAddress: "0x1234567890123456789012345678901234567890"
+      id: "abstract-test-demo-1",
+      name: "🧪 Demo NFT #1",
+      image: createTestNFTImage("Demo NFT", "#667eea", "🎨"),
+      description: "This is test data - real NFTs will appear when Abstract testnet indexing becomes available",
+      collection: "🧪 Abstract Demo Collection",
+      tokenId: "demo-1",
+      contractAddress: "0x0000000000000000000000000000000000000000"
     },
     {
-      id: "abstract-mock-2",
-      name: "Abstract Test NFT #2",
-      image:
-        "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Crect width='200' height='200' fill='%23764ba2'/%3E%3Ctext x='100' y='100' text-anchor='middle' dy='0.3em' fill='white' font-size='24'%3ETest NFT%3C/text%3E%3C/svg%3E",
-      description: "Another test NFT for Abstract testnet",
-      collection: "Abstract Test Collection",
-      tokenId: "2",
-      contractAddress: "0x1234567890123456789012345678901234567890"
+      id: "abstract-test-demo-2", 
+      name: "🧪 Demo NFT #2",
+      image: createTestNFTImage("Demo NFT", "#764ba2", "🎭"),
+      description: "This is test data - real NFTs will appear when Abstract testnet indexing becomes available",
+      collection: "🧪 Abstract Demo Collection",
+      tokenId: "demo-2",
+      contractAddress: "0x0000000000000000000000000000000000000000"
+    },
+    {
+      id: "abstract-test-demo-3",
+      name: "🧪 Demo NFT #3", 
+      image: createTestNFTImage("Demo NFT", "#f093fb", "🚀"),
+      description: "This is test data - real NFTs will appear when Abstract testnet indexing becomes available",
+      collection: "🧪 Abstract Demo Collection",
+      tokenId: "demo-3",
+      contractAddress: "0x0000000000000000000000000000000000000000"
     }
   ]
+  
+  return testNFTs
+}
+
+// Helper to create test NFT images with clear indicators
+function createTestNFTImage(text: string, color: string, emoji: string): string {
+  return `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cdefs%3E%3ClinearGradient id='grad' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' style='stop-color:${color};stop-opacity:1' /%3E%3Cstop offset='100%25' style='stop-color:%23000;stop-opacity:0.3' /%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='200' height='200' fill='url(%23grad)'/%3E%3Ctext x='100' y='80' text-anchor='middle' dy='0.3em' fill='white' font-size='32'%3E${emoji}%3C/text%3E%3Ctext x='100' y='120' text-anchor='middle' dy='0.3em' fill='white' font-size='16' font-weight='bold'%3E${text}%3C/text%3E%3Ctext x='100' y='140' text-anchor='middle' dy='0.3em' fill='rgba(255,255,255,0.8)' font-size='12'%3ETEST DATA%3C/text%3E%3C/svg%3E`
+}
+
+// Helper to detect if NFTs contain test/mock data
+export function hasTestData(nfts: NFTMetadata[]): boolean {
+  return nfts.some(nft => 
+    nft.id.includes("test") || 
+    nft.id.includes("mock") || 
+    nft.id.includes("demo") ||
+    nft.name.includes("🧪") ||
+    nft.collection?.includes("🧪") ||
+    nft.contractAddress === "0x0000000000000000000000000000000000000000"
+  )
+}
+
+// Helper to count test vs real NFTs
+export function getNFTDataInfo(nfts: NFTMetadata[]): { testCount: number; realCount: number; hasTestData: boolean } {
+  let testCount = 0
+  let realCount = 0
+  
+  nfts.forEach(nft => {
+    if (nft.id.includes("test") || nft.id.includes("mock") || nft.id.includes("demo") ||
+        nft.name.includes("🧪") || nft.collection?.includes("🧪") ||
+        nft.contractAddress === "0x0000000000000000000000000000000000000000") {
+      testCount++
+    } else {
+      realCount++
+    }
+  })
+  
+  return { testCount, realCount, hasTestData: testCount > 0 }
 }
 
 // Fetch NFTs from Abstract testnet using available indexers
@@ -298,21 +335,13 @@ export async function fetchNFTsFromAbstractTestnet(
   )
 }
 
-// Debugging utilities
-const DEBUG = process.env.NODE_ENV === "development"
-
+// Legacy debugging utilities - replaced with proper logger
 function debugLog(message: string, data?: any) {
-  if (DEBUG) {
-    console.log(`[NFT Service] ${message}`, data || "")
-  }
+  log.debug(message, data)
 }
 
 function debugError(message: string, error?: any) {
-  if (DEBUG) {
-    console.error(`[NFT Service] ${message}`, error || "")
-  } else {
-    console.warn(`[NFT Service] ${message}`)
-  }
+  log.error(message, error)
 }
 
 // Get API keys from configuration
@@ -358,67 +387,69 @@ export async function fetchNFTsFromOpenSea(
   })
 
   try {
-    const headers: Record<string, string> = {
-      Accept: "application/json"
-    }
-
-    // Add API key if available
-    if (apiKey) {
-      headers["X-API-KEY"] = apiKey
-      debugLog("Using OpenSea API key")
-    } else {
-      debugError("OpenSea API key not configured. Rate limits may apply.")
-    }
-
-    const response = await fetchWithTimeout(url, {
-      method: "GET",
-      headers
-    })
-
-    if (!response.ok) {
-      if (response.status === 429) {
-        throw new Error(
-          "Rate limit exceeded. Please try again later. Consider adding an OpenSea API key."
-        )
-      }
-      if (response.status === 401) {
-        throw new Error(
-          "OpenSea API authentication failed. Please check your API key."
-        )
-      }
-      if (response.status === 404) {
-        return [] // No NFTs found, return empty array
+    return await retryNFTFetch(async () => {
+      const headers: Record<string, string> = {
+        Accept: "application/json"
       }
 
-      // Log response for debugging
-      const errorText = await response.text().catch(() => "Unknown error")
-      debugError(`OpenSea API error ${response.status}:`, { errorText, url })
-      throw new Error(`OpenSea API error: ${response.status} - ${errorText}`)
-    }
+      // Add API key if available
+      if (apiKey) {
+        headers["X-API-KEY"] = apiKey
+        debugLog("Using OpenSea API key")
+      } else {
+        debugError("OpenSea API key not configured. Rate limits may apply.")
+      }
 
-    const data: OpenSeaResponse = await response.json()
+      const response = await fetchWithTimeout(url, {
+        method: "GET",
+        headers
+      })
 
-    if (!data.nfts || !Array.isArray(data.nfts)) {
-      return []
-    }
+      if (!response.ok) {
+        if (response.status === 429) {
+          throw new Error(
+            "Rate limit exceeded. Please try again later. Consider adding an OpenSea API key."
+          )
+        }
+        if (response.status === 401) {
+          throw new Error(
+            "OpenSea API authentication failed. Please check your API key."
+          )
+        }
+        if (response.status === 404) {
+          return [] // No NFTs found, return empty array
+        }
 
-    // Sanitize and validate NFT data
-    const validAssets = data.nfts.filter(
-      (asset) => asset.identifier && asset.contract
-    )
-    const sanitizedNFTs = validAssets.map(sanitizeNFTMetadata)
-    const finalNFTs = sanitizedNFTs.slice(
-      0,
-      NFT_API_CONFIG.MAX_NFTS_PER_REQUEST
-    )
+        // Log response for debugging
+        const errorText = await response.text().catch(() => "Unknown error")
+        debugError(`OpenSea API error ${response.status}:`, { errorText, url })
+        throw new Error(`OpenSea API error: ${response.status} - ${errorText}`)
+      }
 
-    debugLog(`OpenSea fetch successful:`, {
-      totalReturned: data.nfts.length,
-      validAssets: validAssets.length,
-      finalCount: finalNFTs.length
-    })
+      const data: OpenSeaResponse = await response.json()
 
-    return finalNFTs
+      if (!data.nfts || !Array.isArray(data.nfts)) {
+        return []
+      }
+
+      // Sanitize and validate NFT data
+      const validAssets = data.nfts.filter(
+        (asset) => asset.identifier && asset.contract
+      )
+      const sanitizedNFTs = validAssets.map(sanitizeNFTMetadata)
+      const finalNFTs = sanitizedNFTs.slice(
+        0,
+        NFT_API_CONFIG.MAX_NFTS_PER_REQUEST
+      )
+
+      debugLog(`OpenSea fetch successful:`, {
+        totalReturned: data.nfts.length,
+        validAssets: validAssets.length,
+        finalCount: finalNFTs.length
+      })
+
+      return finalNFTs
+    }, "OpenSea", formatAddress(address))
   } catch (error: any) {
     if (error.name === "AbortError") {
       debugError("OpenSea request timeout", { chain, address })
@@ -691,7 +722,7 @@ type CachedNFTResult = {
 }
 
 const nftCache = new Map<string, CachedNFTResult>()
-const CACHE_DURATION = 5 * 60 * 1000 // 5 minutes
+const CACHE_DURATION = TIMING_CONSTANTS.NFT_CACHE_DURATION
 
 export async function fetchUserNFTsWithCache(
   address: Address,
