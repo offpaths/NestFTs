@@ -107,10 +107,65 @@ After running `dev`, load the extension from `build/chrome-mv3-dev` in your brow
 
 ## Drag & Drop Workflow
 1. **User opens NFT modal** → Click toolbar button to display NFT collection
-2. **NFT selection** → Drag NFT image from modal (auto-closes to show drop zones)
-3. **Drop zone activation** → Twitter compose areas highlight when dragging over them
-4. **File upload trigger** → Dropped NFT converts to File object and triggers native upload
-5. **Twitter processing** → Twitter handles the file as if user selected it normally
+2. **NFT selection** → Drag NFT image from modal (auto-closes after 150ms to show drop zones)
+3. **Drop zone activation** → Twitter compose areas highlight with pulsing animation and drop hints
+4. **Multi-format data transfer** → System transfers File objects, URLs, and metadata simultaneously
+5. **Smart processing** → Handler prioritizes File objects, falls back to URL-to-File conversion if needed
+6. **File upload trigger** → Converted/direct File object triggers Twitter's native upload system
+7. **User feedback** → Visual indicators show loading, success, or error states with specific messages
+8. **Twitter processing** → Twitter handles the file as if user selected it normally
+
+## Drag & Drop Technical Implementation
+
+### **Data Transfer Strategy**
+- **Primary Path**: Pre-loaded File objects for direct compatibility
+- **Fallback Path #1**: Canvas-generated data URLs for cross-domain scenarios  
+- **Fallback Path #2**: Raw image URLs + NFT metadata with on-demand conversion
+- **Fallback Path #3**: Plain text descriptions for basic compatibility
+
+### **Cross-Shadow DOM Compatibility**
+- Multiple data formats ensure transfer works across Shadow DOM boundaries
+- Extended modal close delay (150ms) allows proper drag data establishment
+- Event delegation and React-compatible event sequences for modern Twitter UI
+
+### **Error Handling & Debugging**
+- Comprehensive logging of drag data types and transfer success/failure
+- Specific user feedback for different failure scenarios (no file input, network errors, invalid data)
+- Graceful degradation through multiple data format attempts
+
+### **Visual Feedback System**
+- **Drag Over**: Dashed border, background highlight, pulse animation, contextual drop hints
+- **Loading State**: Processing spinner with descriptive messages  
+- **Success State**: Green checkmark with confirmation (2s auto-dismiss)
+- **Error State**: Red X with specific error details (3s auto-dismiss)
+- **Animations**: Smooth fade-in/fade-out transitions with proper cleanup
+
+## Troubleshooting Drag & Drop Issues
+
+### **"No files received" Error**
+- **Cause**: Drag data not transferring across Shadow DOM boundaries
+- **Solution**: System automatically falls back to URL-based transfer
+- **Debug**: Check browser console for drag data types and transfer logs
+
+### **"Upload area not found" Error** 
+- **Cause**: File input discovery failing on current Twitter UI
+- **Solution**: Enhanced proximity-based search with multiple container strategies
+- **Debug**: Verify compose area is visible and active before dragging
+
+### **"Failed to process image" Error**
+- **Cause**: Network issues fetching NFT image or CORS restrictions
+- **Solution**: Pre-loading system caches images, fallback to direct URLs
+- **Debug**: Check NFT image URL accessibility and CORS headers
+
+### **Drop zones not highlighting**
+- **Cause**: Compose area selectors not matching current Twitter DOM
+- **Solution**: Comprehensive selector list covers modern and legacy Twitter UI
+- **Debug**: Inspect Twitter compose elements to verify data-testid attributes
+
+### **Modal not closing during drag**
+- **Cause**: Drag event timing issues with modal state management
+- **Solution**: 150ms delay ensures proper drag data establishment before close
+- **Debug**: Check dragStart event logs and modal close timing
 
 ## TypeScript Configuration
 - Uses Plasmo's base TypeScript config via `plasmo/templates/tsconfig.base`
