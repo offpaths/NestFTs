@@ -50,11 +50,22 @@ After running `dev`, load the extension from `build/chrome-mv3-dev` in your brow
   - Ensures consistent styling regardless of host page's font size
 - **Event System**: Uses custom DOM events (`NFTORY_TOGGLE_NFT_MODAL`) for component communication
 - **Button Integration**: Injects buttons into `[data-testid="ScrollSnap-List"]` containers within toolbars
+- **Drag & Drop System**: Comprehensive drop zone setup for Twitter compose areas:
+  - Multi-selector approach covering legacy and modern Twitter UI elements
+  - Smart file input discovery with proximity-based fallback
+  - Validates compose areas and file inputs for compatibility
+  - Handles drag feedback with visual indicators
 
 #### Modal System (`src/contents/inventory-modal-ui.tsx`)
 - **Shadow DOM Management**: Uses `ensureShadowRoot()` to create isolated Shadow DOM containers
 - **Event Handling**: Listens for toggle events with coordinate data for positioning
 - **React Integration**: Uses `createRoot()` to render React components within Shadow DOM
+
+#### NFT Modal Component (`src/popup/inventory-modal.tsx`)
+- **Drag Implementation**: NFT images are draggable with pre-loaded File objects
+- **File Pre-loading**: Converts NFT images to proper File objects for native drag behavior
+- **Auto-close on Drag**: Modal closes automatically during drag to reveal drop zones
+- **Event Communication**: Dispatches selection events for cross-component communication
 
 #### Configuration System (`src/utils/app-config.tsx`)
 - Centralized constants for DOM IDs (`nftory-nft-inventory-icon`, `nftory-nft-inventory-modal`)
@@ -77,12 +88,29 @@ After running `dev`, load the extension from `build/chrome-mv3-dev` in your brow
 3. **Event-Driven Architecture**: Custom events enable communication between injected components and modals with coordinate-based positioning
 4. **Twitter UI Mimicking**: Precise button styling (34px dimensions, rounded corners, hover effects) matches native toolbar buttons
 5. **Positioning System**: Modal supports both centered and anchor-based positioning using click coordinates
+6. **Native Drag & Drop Integration**: 
+   - NFT images behave like native files when dragged
+   - Automatic file input discovery and triggering
+   - Cross-Shadow DOM drag operations
+   - Visual feedback during drag states
 
 ## Twitter/X Integration Points
 - **Target Elements**: `div[data-testid="toolBar"]` for toolbar identification
 - **Injection Point**: `[data-testid="ScrollSnap-List"]` within toolbars for button placement
+- **Compose Area Detection**: Comprehensive selectors for modern and legacy Twitter compose UI:
+  - `[role="textbox"]`, `[data-testid*="tweetTextarea"]`, `[contenteditable="true"]`
+  - Reply areas: `[data-testid*="replyTextarea"]`, DM composer: `[data-testid="dmComposerTextInput"]`
+  - Aria labels: `[aria-label*="Post text"]`, `[aria-label*="Tweet text"]`, `[aria-label*="Reply"]`
+- **File Upload Integration**: Smart file input discovery with fallback strategies
 - **Styling Compatibility**: Matches Twitter/X dark mode design patterns
 - **Permission Requirements**: `tabs`, `scripting`, `activeTab`, `storage` and `https://*/*` host permissions
+
+## Drag & Drop Workflow
+1. **User opens NFT modal** → Click toolbar button to display NFT collection
+2. **NFT selection** → Drag NFT image from modal (auto-closes to show drop zones)
+3. **Drop zone activation** → Twitter compose areas highlight when dragging over them
+4. **File upload trigger** → Dropped NFT converts to File object and triggers native upload
+5. **Twitter processing** → Twitter handles the file as if user selected it normally
 
 ## TypeScript Configuration
 - Uses Plasmo's base TypeScript config via `plasmo/templates/tsconfig.base`
