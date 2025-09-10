@@ -39,18 +39,6 @@ export const getStyle = (): HTMLStyleElement => {
   return styleElement
 }
 
-/**
- * Returns the footer row that contains the formatting icons on the left
- * and the Reply button on the right.
- */
-function findComposerFooter(toolbar: Element): HTMLElement | null {
-  // Start from the known toolbar and climb to the footer row
-  // The footer row contains both the group of icons and the Reply button.
-  const group = toolbar.closest('[data-testid="toolBar"]')
-  // In most layouts the footer is the toolbar's parent element
-  const footer = group?.parentElement as HTMLElement | null
-  return footer ?? null
-}
 
 function setButtonStyleAndAttribs(btn: HTMLButtonElement) {
   btn.id = appconfig.BTN_ID
@@ -460,6 +448,7 @@ function handleDragOver(event: DragEvent) {
       // Make sure the parent has relative positioning
       if (getComputedStyle(target).position === 'static') {
         target.style.position = 'relative'
+        target.setAttribute('data-nftory-position-modified', 'true')
       }
       
       target.appendChild(dropHint)
@@ -483,6 +472,41 @@ function handleDragOver(event: DragEvent) {
 }
 
 /**
+ * Comprehensive cleanup of all drag-related styling
+ */
+function cleanupDragStyling(target: HTMLElement) {
+  // Remove all drag-over visual styles
+  target.style.outline = ''
+  target.style.backgroundColor = ''
+  target.style.borderRadius = ''
+  target.style.animation = ''
+  target.style.cursor = ''
+  target.style.transition = ''
+  
+  // Restore original position if we modified it
+  if (target.hasAttribute('data-nftory-position-modified')) {
+    target.style.position = ''
+    target.removeAttribute('data-nftory-position-modified')
+  }
+  
+  // Remove drop hint
+  const dropHint = target.querySelector('.nftory-drop-hint')
+  if (dropHint) {
+    dropHint.remove()
+  }
+  
+  // Remove any feedback elements (but let them finish their animations)
+  const feedback = target.querySelector('.nftory-drop-feedback')
+  if (feedback && feedback.style.animation.includes('fade-out')) {
+    // Let existing fade-out animation complete
+  } else if (feedback) {
+    feedback.remove()
+  }
+  
+  log.debug('Comprehensive drag styling cleanup completed')
+}
+
+/**
  * Handles the drag leave event to remove visual feedback
  */
 function handleDragLeave(event: DragEvent) {
@@ -498,24 +522,8 @@ function handleDragLeave(event: DragEvent) {
     return // Don't remove styling if entering a child element
   }
   
-  // Remove all visual feedback
-  target.style.outline = ''
-  target.style.backgroundColor = ''
-  target.style.borderRadius = ''
-  target.style.animation = ''
-  target.style.cursor = ''
-  target.style.transition = ''
-  
-  // Restore original position if we changed it
-  if (target.style.position === 'relative' && !target.hasAttribute('data-original-position')) {
-    target.style.position = ''
-  }
-  
-  // Remove drop hint
-  const dropHint = target.querySelector('.nftory-drop-hint')
-  if (dropHint) {
-    dropHint.remove()
-  }
+  // Use centralized cleanup function
+  cleanupDragStyling(target)
   
   log.debug('Drag leave: Visual feedback removed')
 }
@@ -529,19 +537,8 @@ async function handleDrop(event: DragEvent) {
   
   const target = event.currentTarget as HTMLElement
   
-  // Remove drag-over visual feedback first
-  target.style.outline = ''
-  target.style.backgroundColor = ''
-  target.style.borderRadius = ''
-  target.style.animation = ''
-  target.style.cursor = ''
-  target.style.transition = ''
-  
-  // Remove drop hint
-  const dropHint = target.querySelector('.nftory-drop-hint')
-  if (dropHint) {
-    dropHint.remove()
-  }
+  // Complete drag-over visual feedback cleanup
+  cleanupDragStyling(target)
   
   if (!event.dataTransfer) {
     log.debug('No dataTransfer in drop event')
@@ -621,8 +618,14 @@ async function handleDrop(event: DragEvent) {
         return
       }
       
-      // Convert URL to File object
+      // Validate and convert URL to File object
       try {
+        // Security: Validate URL scheme to prevent internal network access
+        const url = new URL(imageUrl)
+        if (!['http:', 'https:'].includes(url.protocol)) {
+          throw new Error('Invalid URL protocol - only HTTP/HTTPS allowed')
+        }
+        
         const response = await fetch(imageUrl, { mode: 'cors' })
         if (!response.ok) {
           throw new Error(`Failed to fetch image: ${response.status}`)
