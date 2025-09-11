@@ -109,7 +109,6 @@ function createNFTButton(): HTMLButtonElement {
 function injectButton(toolbar: Element) {
   // Avoid duplicates
   if (toolbar.querySelector(`#${appconfig.BTN_ID}`)) {
-    log.debug("Button already exists in this toolbar, skipping")
     return
   }
 
@@ -118,15 +117,12 @@ function injectButton(toolbar: Element) {
     '[data-testid="ScrollSnap-List"]'
   )
   if (!scrollSnapList) {
-    log.debug("No ScrollSnap-List found in toolbar")
     return
   }
 
   // Append our button to the end of the scroll snap list
-  log.debug("Creating and injecting NFT button")
   const nftBtn = createNFTButton()
   scrollSnapList.appendChild(nftBtn)
-  log.debug("NFT button successfully injected with ID:", nftBtn.id)
 }
 
 /**
@@ -894,9 +890,7 @@ function isValidComposeArea(element: Element): boolean {
 function scanAndInjectNiftoryIcon() {
   // Find all toolbars in replies, tweets, and modals
   const toolbars = document.querySelectorAll('div[data-testid="toolBar"]')
-  log.debug(`Found ${toolbars.length} toolbars on page`)
-  toolbars.forEach((toolbar, index) => {
-    log.debug(`Injecting button into toolbar ${index + 1}`)
+  toolbars.forEach((toolbar) => {
     injectButton(toolbar)
   })
   

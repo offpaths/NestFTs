@@ -13,7 +13,6 @@ type Props = {
   onClose: () => void
   position: { mode: "center" } | { mode: "anchor"; x: number; y: number }
   nfts: NFTMetadata[]
-  onPickNFT: (nft: NFTMetadata) => void
   isLoading?: boolean
   errors?: NFTFetchError[]
   fromCache?: boolean
@@ -25,7 +24,6 @@ function InventoryModal({
   onClose,
   position,
   nfts,
-  onPickNFT,
   isLoading = false,
   errors = [],
   fromCache = false,
@@ -34,7 +32,7 @@ function InventoryModal({
   const { isConnected, address, isConnecting, error, login, logout, chain, chainId } =
     useAbstractWallet()
   
-  const [draggedNFT, setDraggedNFT] = useState<string | null>(null)
+  const [selectedNFT, setSelectedNFT] = useState<string | null>(null)
   const [nftFiles, setNftFiles] = useState<Map<string, File>>(new Map())
 
   // Enhanced retry function with better UX
@@ -44,6 +42,33 @@ function InventoryModal({
       detail: { clearErrors: true, timestamp: Date.now() }
     }))
   }
+
+  // Handle NFT click to add to compose area
+  const handleNFTClick = async (nft: NFTMetadata) => {
+    log.debug(`🎯 NFT clicked: ${nft.name}`)
+    setSelectedNFT(nft.id)
+    
+    try {
+      // Dispatch event to notify content script to handle the upload
+      window.dispatchEvent(new CustomEvent("NFTORY_NFT_CLICKED", {
+        detail: { 
+          nft,
+          file: nftFiles.get(nft.id) || null,
+          timestamp: Date.now()
+        }
+      }))
+      
+      // Close modal after dispatching event
+      setTimeout(() => {
+        onClose()
+        setSelectedNFT(null)
+      }, 100)
+      
+    } catch (error) {
+      log.error('Failed to handle NFT click:', error)
+      setSelectedNFT(null)
+    }
+  }
   useEffect(() => {
     const onEsc = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose()
@@ -52,7 +77,7 @@ function InventoryModal({
     return () => document.removeEventListener("keydown", onEsc)
   }, [onClose])
 
-  // Pre-load NFT files only (no data URLs to avoid text pasting)
+  // Pre-load NFT files for click-to-add functionality
   useEffect(() => {
     if (open && nfts.length > 0) {
       const loadNFTFiles = async () => {
@@ -413,19 +438,19 @@ function InventoryModal({
             nfts.map((n) => (
               <button
                 key={n.id}
-                onClick={() => onPickNFT(n)}
+                onClick={() => handleNFTClick(n)}
                 style={{
                   aspectRatio: "1 / 1",
                   borderRadius: 8,
-                  border: draggedNFT === n.id 
+                  border: selectedNFT === n.id 
                     ? "2px solid rgb(29,155,240)" 
                     : "1px solid rgba(239,243,244,0.2)",
                   overflow: "hidden",
                   padding: 0,
                   background: "transparent",
-                  cursor: draggedNFT === n.id ? "grabbing" : "pointer",
-                  opacity: draggedNFT === n.id ? 0.7 : 1,
-                  transform: draggedNFT === n.id ? "scale(0.95)" : "scale(1)",
+                  cursor: "pointer",
+                  opacity: selectedNFT === n.id ? 0.8 : 1,
+                  transform: selectedNFT === n.id ? "scale(0.98)" : "scale(1)",
                   transition: "all 0.2s ease"
                 }}>
                 <div
@@ -439,12 +464,12 @@ function InventoryModal({
                     <img
                       src={n.image}
                       alt=""
-                      draggable="true"
+                      draggable="false"
                       style={{
                         width: "100%",
                         height: "100%",
                         objectFit: "cover",
-                        pointerEvents: "auto" // Always allow pointer events for dragging
+                        pointerEvents: "none"
                       }}
                       onError={(e) => {
                         // Show fallback instead of hiding
@@ -456,77 +481,6 @@ function InventoryModal({
                       }}
                       onLoad={() => {
                         log.debug(`Successfully loaded NFT image: ${n.name}`)
-                      }}
-                      onDragStart={(e) => {
-                        log.debug(`🎯 DRAG START for NFT: ${n.name}`)
-                        setDraggedNFT(n.id)
-                        
-                        e.dataTransfer.effectAllowed = "copy"
-                        
-                        // Use pre-loaded File object if available 
-                        const preloadedFile = nftFiles.get(n.id)
-                        if (preloadedFile) {
-                          log.debug("🎯 FOUND pre-loaded file, adding to drag transfer")
-                          log.debug(`- File name: ${preloadedFile.name}`)
-                          log.debug(`- File size: ${preloadedFile.size} bytes`)
-                          log.debug(`- File type: ${preloadedFile.type}`)
-                          
-                          // Add actual File object - this should work like desktop drag
-                          e.dataTransfer.items.add(preloadedFile)
-                          
-                          // Debug what's actually in the transfer
-                          log.debug(`- Transfer items count: ${e.dataTransfer.items.length}`)
-                          log.debug(`- Transfer types: ${Array.from(e.dataTransfer.types).join(', ')}`)
-                          
-                          for (let i = 0; i < e.dataTransfer.items.length; i++) {
-                            const item = e.dataTransfer.items[i]
-                            log.debug(`  - Item ${i}: kind=${item.kind}, type=${item.type}`)
-                          }
-                          
-                          // Add fallback data URL for better compatibility
-                          try {
-                            const canvas = document.createElement('canvas')
-                            const ctx = canvas.getContext('2d')
-                            const img = new Image()
-                            img.crossOrigin = 'anonymous'
-                            img.onload = () => {
-                              canvas.width = Math.min(img.width, 800)
-                              canvas.height = Math.min(img.height, 800)
-                              ctx?.drawImage(img, 0, 0, canvas.width, canvas.height)
-                              const dataUrl = canvas.toDataURL('image/png')
-                              e.dataTransfer.setData('text/uri-list', dataUrl)
-                              e.dataTransfer.setData('text/plain', `NFT: ${n.name}`)
-                              log.debug("✅ Added fallback data URL and text")
-                            }
-                            img.src = n.image
-                          } catch (error) {
-                            log.debug("❌ Could not create fallback data URL:", error)
-                          }
-                          
-                        } else {
-                          log.debug(`❌ NO pre-loaded file found for NFT ID: ${n.id}`)
-                          log.debug(`Available file IDs: ${Array.from(nftFiles.keys()).join(', ')}`)
-                          
-                          // Add fallback data - NFT image URL and metadata
-                          e.dataTransfer.setData('text/uri-list', n.image)
-                          e.dataTransfer.setData('text/plain', `NFT: ${n.name}`)
-                          e.dataTransfer.setData('application/json', JSON.stringify({
-                            type: 'nft',
-                            name: n.name,
-                            image: n.image,
-                            id: n.id
-                          }))
-                          log.debug("✅ Added fallback drag data (URL + metadata)")
-                        }
-                        
-                        // Close modal after drag data is set (longer delay for data transfer)
-                        setTimeout(() => onClose(), 150)
-                        
-                        log.debug("📊 DRAG DATA SET - Modal will close in 150ms")
-                      }}
-                      onDragEnd={() => {
-                        log.debug(`Drag ended for NFT: ${n.name}`)
-                        setDraggedNFT(null)
                       }}
                     />
                   ) : null}

@@ -48,28 +48,29 @@ After running `dev`, load the extension from `build/chrome-mv3-dev` in your brow
   - Converts Tailwind's `:root` selectors to `:host(plasmo-csui)` for Shadow DOM compatibility
   - Converts `rem` units to pixel values using a 16px base font size
   - Ensures consistent styling regardless of host page's font size
-- **Event System**: Uses custom DOM events (`NFTORY_TOGGLE_NFT_MODAL`) for component communication
+- **Event System**: Uses custom DOM events (`NFTORY_TOGGLE_NFT_MODAL`, `NFTORY_NFT_CLICKED`) for component communication
 - **Button Integration**: Injects buttons into `[data-testid="ScrollSnap-List"]` containers within toolbars
-- **Drag & Drop System**: Comprehensive drop zone setup for Twitter compose areas:
-  - Multi-selector approach covering legacy and modern Twitter UI elements
-  - Smart file input discovery with proximity-based fallback
-  - Validates compose areas and file inputs for compatibility
-  - Handles drag feedback with visual indicators
+- **Click-to-Add System**: Modal-aware compose area targeting for NFT uploads:
+  - Prioritizes high z-index modal compose areas over background areas
+  - Modal-aware file input discovery with container matching
+  - Smart file input selection based on DOM hierarchy and proximity
+  - Direct file upload triggering without drag-and-drop complexity
 
 #### Modal System (`src/contents/inventory-modal-ui.tsx`)
 - **Shadow DOM Management**: Uses `ensureShadowRoot()` to create isolated Shadow DOM containers
-- **Event Handling**: Listens for toggle events with coordinate data for positioning
+- **Event Handling**: Listens for toggle events with coordinate data for positioning and NFT click events for upload processing
 - **React Integration**: Uses `createRoot()` to render React components within Shadow DOM
+- **Click-to-Add Handler**: Processes `NFTORY_NFT_CLICKED` events with modal-aware compose area detection and file upload triggering
 
 #### NFT Modal Component (`src/popup/inventory-modal.tsx`)
-- **Drag Implementation**: NFT images are draggable with pre-loaded File objects
-- **File Pre-loading**: Converts NFT images to proper File objects for native drag behavior
-- **Auto-close on Drag**: Modal closes automatically during drag to reveal drop zones
-- **Event Communication**: Dispatches selection events for cross-component communication
+- **Click-to-Add Implementation**: NFT images are clickable with pre-loaded File objects ready for upload
+- **File Pre-loading**: Converts NFT images to proper File objects during modal open for instant click-to-add functionality
+- **Auto-close on Click**: Modal closes automatically after NFT click to provide user feedback
+- **Event Communication**: Dispatches `NFTORY_NFT_CLICKED` events with NFT metadata and pre-loaded file data
 
 #### Configuration System (`src/utils/app-config.tsx`)
 - Centralized constants for DOM IDs (`nftory-nft-inventory-icon`, `nftory-nft-inventory-modal`)
-- Event types (`NFTORY_TOGGLE_NFT_MODAL`)
+- Event types (`NFTORY_TOGGLE_NFT_MODAL`, `NFTORY_NFT_CLICKED`)
 - Prevents ID conflicts and enables consistent component identification
 
 ### Styling Architecture
@@ -88,11 +89,11 @@ After running `dev`, load the extension from `build/chrome-mv3-dev` in your brow
 3. **Event-Driven Architecture**: Custom events enable communication between injected components and modals with coordinate-based positioning
 4. **Twitter UI Mimicking**: Precise button styling (34px dimensions, rounded corners, hover effects) matches native toolbar buttons
 5. **Positioning System**: Modal supports both centered and anchor-based positioning using click coordinates
-6. **Native Drag & Drop Integration**: 
-   - NFT images behave like native files when dragged
-   - Automatic file input discovery and triggering
-   - Cross-Shadow DOM drag operations
-   - Visual feedback during drag states
+6. **Click-to-Add Integration**: 
+   - NFT images upload directly when clicked
+   - Modal-aware compose area targeting and file input discovery
+   - Automatic file conversion from NFT image URLs
+   - Instant feedback with modal auto-close
 
 ## Twitter/X Integration Points
 - **Target Elements**: `div[data-testid="toolBar"]` for toolbar identification
@@ -105,67 +106,67 @@ After running `dev`, load the extension from `build/chrome-mv3-dev` in your brow
 - **Styling Compatibility**: Matches Twitter/X dark mode design patterns
 - **Permission Requirements**: `tabs`, `scripting`, `activeTab`, `storage` and `https://*/*` host permissions
 
-## Drag & Drop Workflow
-1. **User opens NFT modal** → Click toolbar button to display NFT collection
-2. **NFT selection** → Drag NFT image from modal (auto-closes after 150ms to show drop zones)
-3. **Drop zone activation** → Twitter compose areas highlight with pulsing animation and drop hints
-4. **Multi-format data transfer** → System transfers File objects, URLs, and metadata simultaneously
-5. **Smart processing** → Handler prioritizes File objects, falls back to URL-to-File conversion if needed
-6. **File upload trigger** → Converted/direct File object triggers Twitter's native upload system
-7. **User feedback** → Visual indicators show loading, success, or error states with specific messages
-8. **Twitter processing** → Twitter handles the file as if user selected it normally
+## Click-to-Add Workflow
+1. **User opens NFT modal** → Click toolbar button to display NFT collection with wallet connection
+2. **NFT selection** → Click NFT image in modal (shows visual feedback with selected state)
+3. **Modal targeting** → System detects active compose area, prioritizing high z-index modal areas over background
+4. **File processing** → Uses pre-loaded File object or converts NFT image URL to File on-demand
+5. **Upload trigger** → File object directly triggers Twitter's native file input system
+6. **User feedback** → Modal auto-closes after successful click, providing immediate visual confirmation
+7. **Twitter processing** → Twitter handles the file as if user selected it through normal file picker
 
-## Drag & Drop Technical Implementation
+## Click-to-Add Technical Implementation
 
-### **Data Transfer Strategy**
-- **Primary Path**: Pre-loaded File objects for direct compatibility
-- **Fallback Path #1**: Canvas-generated data URLs for cross-domain scenarios  
-- **Fallback Path #2**: Raw image URLs + NFT metadata with on-demand conversion
-- **Fallback Path #3**: Plain text descriptions for basic compatibility
+### **Modal-Aware Targeting**
+- **Primary Strategy**: Finds active compose areas with high z-index values (modals, popups)
+- **Fallback Strategy**: Falls back to background compose areas if no modal areas found
+- **File Input Discovery**: Locates file inputs within the same modal container as the compose area
+- **Container Matching**: Uses DOM hierarchy to match file inputs to their corresponding compose areas
 
-### **Cross-Shadow DOM Compatibility**
-- Multiple data formats ensure transfer works across Shadow DOM boundaries
-- Extended modal close delay (150ms) allows proper drag data establishment
-- Event delegation and React-compatible event sequences for modern Twitter UI
+### **File Pre-loading System**
+- **On Modal Open**: Converts all NFT image URLs to File objects in background
+- **Cross-Origin Support**: Uses `mode: 'cors'` fetch for external NFT image URLs
+- **File Naming**: Sanitizes NFT names for valid filenames with `.png` extension
+- **Error Handling**: Graceful fallback to URL-based conversion if pre-loading fails
 
-### **Error Handling & Debugging**
-- Comprehensive logging of drag data types and transfer success/failure
-- Specific user feedback for different failure scenarios (no file input, network errors, invalid data)
-- Graceful degradation through multiple data format attempts
+### **Event Architecture**
+- **Click Detection**: NFT images have `draggable="false"` and click handlers
+- **Event Dispatch**: Dispatches `NFTORY_NFT_CLICKED` custom events with NFT data and pre-loaded files
+- **Cross-Component Communication**: Content script listens for click events from popup modal
+- **State Management**: Tracks selected NFT with visual feedback and auto-reset
 
-### **Visual Feedback System**
-- **Drag Over**: Dashed border, background highlight, pulse animation, contextual drop hints
-- **Loading State**: Processing spinner with descriptive messages  
-- **Success State**: Green checkmark with confirmation (2s auto-dismiss)
-- **Error State**: Red X with specific error details (3s auto-dismiss)
-- **Animations**: Smooth fade-in/fade-out transitions with proper cleanup
+### **Upload Processing**
+- **File Input Simulation**: Creates synthetic click and change events on Twitter's file inputs
+- **Data Transfer**: Uses pre-loaded File objects or converts URLs to File objects on-demand
+- **Error Recovery**: Comprehensive error handling with specific user feedback messages
+- **Security Validation**: URL protocol validation prevents internal network access
 
-## Troubleshooting Drag & Drop Issues
+## Troubleshooting Click-to-Add Issues
 
-### **"No files received" Error**
-- **Cause**: Drag data not transferring across Shadow DOM boundaries
-- **Solution**: System automatically falls back to URL-based transfer
-- **Debug**: Check browser console for drag data types and transfer logs
+### **NFT goes to background instead of modal**
+- **Cause**: File input discovery finding background file inputs instead of modal ones
+- **Solution**: Enhanced modal-aware file input discovery with container prioritization
+- **Debug**: Check z-index values and DOM hierarchy of compose areas
 
-### **"Upload area not found" Error** 
-- **Cause**: File input discovery failing on current Twitter UI
-- **Solution**: Enhanced proximity-based search with multiple container strategies
-- **Debug**: Verify compose area is visible and active before dragging
+### **"No active compose area found" Error**
+- **Cause**: Compose area detection failing on current Twitter UI state
+- **Solution**: Comprehensive selector list covers modern and legacy Twitter UI elements
+- **Debug**: Verify compose area is visible and focused before clicking NFT
 
-### **"Failed to process image" Error**
-- **Cause**: Network issues fetching NFT image or CORS restrictions
-- **Solution**: Pre-loading system caches images, fallback to direct URLs
-- **Debug**: Check NFT image URL accessibility and CORS headers
+### **"Could not find file input" Error**
+- **Cause**: File input discovery failing within modal containers
+- **Solution**: Multi-strategy approach with proximity-based fallback and container matching
+- **Debug**: Inspect file input elements and their relationship to compose areas
 
-### **Drop zones not highlighting**
-- **Cause**: Compose area selectors not matching current Twitter DOM
-- **Solution**: Comprehensive selector list covers modern and legacy Twitter UI
-- **Debug**: Inspect Twitter compose elements to verify data-testid attributes
+### **"Failed to process NFT click upload" Error**
+- **Cause**: Network issues fetching NFT image or file processing failures
+- **Solution**: Pre-loading system with fallback to URL-based conversion
+- **Debug**: Check NFT image URL accessibility and browser network logs
 
-### **Modal not closing during drag**
-- **Cause**: Drag event timing issues with modal state management
-- **Solution**: 150ms delay ensures proper drag data establishment before close
-- **Debug**: Check dragStart event logs and modal close timing
+### **Modal not closing after click**
+- **Cause**: Event handling issues or error states preventing auto-close
+- **Solution**: 100ms timeout ensures proper event processing before modal close
+- **Debug**: Check click event logs and modal state management
 
 ## TypeScript Configuration
 - Uses Plasmo's base TypeScript config via `plasmo/templates/tsconfig.base`
