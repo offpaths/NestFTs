@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback, useRef } from "react"
 import { useLoginWithAbstract, useAbstractClient } from "@abstract-foundation/agw-react"
 import { type Address } from "viem"
 import {
@@ -18,6 +18,7 @@ interface UseAbstractWalletReturn extends AbstractWalletState {
   login: () => Promise<void>
   logout: () => Promise<void>
   reconnect: () => Promise<void>
+  clearAllState: () => Promise<void>
   chain?: SupportedChain
   chainId?: number
 }
@@ -25,8 +26,18 @@ interface UseAbstractWalletReturn extends AbstractWalletState {
 export function useAbstractWallet(): UseAbstractWalletReturn {
   const [state, setState] = useState<AbstractWalletState>({
     isConnected: false,
-    isConnecting: false
+    isConnecting: false,
+    isDisconnecting: false
   })
+  
+  // Use ref to track mounted state for cleanup
+  const isMountedRef = useRef(true)
+  
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
 
   // Use Abstract's native login hook with enhanced options
   const loginHook = useLoginWithAbstract()
@@ -38,64 +49,85 @@ export function useAbstractWallet(): UseAbstractWalletReturn {
   // Use Abstract's client hook to get wallet info - cast to any to fix type conflicts
   const { data: client } = useAbstractClient() as { data: any }
 
-  // Check for stored connection on mount
+  // Consolidated effect for client state management
   useEffect(() => {
-    const checkStoredConnection = async () => {
+    const handleClientState = async () => {
+      if (!isMountedRef.current) return
+      
       try {
+        // Check for stored connection first
         const storedAddress = await getStoredWalletConnection()
-        if (storedAddress && client && client.account && client.account.address) {
+        
+        if (client && client.account && client.account.address) {
+          const address = client.account.address as Address
           const chainId = client.chain ? client.chain.id : undefined
-          setState({
-            isConnected: true,
-            address: client.account.address as Address,
+          
+          log.debug('[Wallet Hook] Client connected:', {
+            address,
             chainId,
-            isConnecting: false
+            chainName: client.chain ? client.chain.name : undefined
           })
+          
+          if (isMountedRef.current) {
+            setState(prev => ({
+              ...prev,
+              isConnected: true,
+              address,
+              chainId,
+              isConnecting: false,
+              error: undefined
+            }))
+          }
+          
+          // Store connection for persistence
+          if (isMountedRef.current) {
+            storeWalletConnection(address).catch(console.error)
+          }
+        } else if (storedAddress && !client) {
+          // Handle stored connection without active client
+          log.debug('[Wallet Hook] Stored connection found, waiting for client')
+        } else {
+          // No client connection - update state only if currently connected
+          if (isMountedRef.current) {
+            setState(prev => {
+              // Only trigger cleanup if we're transitioning from connected to disconnected
+              if (prev.isConnected && !prev.isDisconnecting) {
+                log.debug('[Wallet Hook] External disconnect detected')
+                // Trigger cleanup in next tick to avoid state update during render
+                setTimeout(() => {
+                  clearAllStateInternal().catch(console.error)
+                }, 0)
+              }
+              
+              return {
+                ...prev,
+                isConnected: false,
+                address: undefined,
+                chainId: undefined,
+                isDisconnecting: false,
+                error: undefined
+              }
+            })
+          }
         }
       } catch (error) {
-        log.error("Failed to check stored connection:", error)
+        log.error("Failed to handle client state:", error)
+        if (isMountedRef.current) {
+          setState(prev => ({
+            ...prev,
+            error: getWalletErrorMessage(error)
+          }))
+        }
       }
     }
 
-    checkStoredConnection()
+    handleClientState()
   }, [client])
 
-  // Update state when client connection changes
-  useEffect(() => {
-    if (client && client.account && client.account.address) {
-      const address = client.account.address as Address
-      const chainId = client.chain ? client.chain.id : undefined
-      
-      log.debug('[Wallet Hook] Client connected:', {
-        address,
-        chainId,
-        chainName: client.chain ? client.chain.name : undefined
-      })
-      
-      setState(prev => ({
-        ...prev,
-        isConnected: true,
-        address,
-        chainId,
-        isConnecting: false,
-        error: undefined
-      }))
-      
-      // Store connection for persistence
-      storeWalletConnection(address).catch(console.error)
-    } else if (state.isConnected && !state.isConnecting) {
-      // Client disconnected
-      setState(prev => ({
-        ...prev,
-        isConnected: false,
-        address: undefined,
-        chainId: undefined
-      }))
-    }
-  }, [client, state.isConnected, state.isConnecting])
-
   // Login function using Abstract's native popup with enhanced UX
-  const login = async (): Promise<void> => {
+  const login = useCallback(async (): Promise<void> => {
+    if (!isMountedRef.current) return
+    
     try {
       setState(prev => ({ ...prev, isConnecting: true, error: undefined }))
       
@@ -110,38 +142,82 @@ export function useAbstractWallet(): UseAbstractWalletReturn {
     } catch (error: any) {
       log.error('[Abstract Login] Login failed:', error)
       
-      const errorMessage = getWalletErrorMessage(error)
-      setState(prev => ({
-        ...prev,
-        isConnecting: false,
-        error: errorMessage
-      }))
+      if (isMountedRef.current) {
+        const errorMessage = getWalletErrorMessage(error)
+        setState(prev => ({
+          ...prev,
+          isConnecting: false,
+          error: errorMessage
+        }))
+      }
     }
-  }
+  }, [agwLogin])
 
-  // Logout function
-  const logout = async (): Promise<void> => {
+  // Internal cleanup function - shared between manual logout and external disconnect
+  const clearAllStateInternal = useCallback(async (): Promise<void> => {
     try {
-      // Use Abstract's native logout function
-      agwLogout()
-      
       // Clear stored connection
       await clearWalletConnection()
       
-      // Reset state
-      setState({
-        isConnected: false,
-        isConnecting: false
-      })
+      // Dispatch cleanup event for other components
+      window.dispatchEvent(new CustomEvent('NFTORY_WALLET_DISCONNECTED', {
+        detail: { timestamp: Date.now() }
+      }))
+      
+      log.debug('[Wallet Hook] State cleanup completed')
     } catch (error) {
-      log.error("Failed to logout:", error)
+      log.error('Failed to clear wallet state:', error)
     }
-  }
+  }, [])
+  
+  // Public cleanup function
+  const clearAllState = useCallback(async (): Promise<void> => {
+    await clearAllStateInternal()
+  }, [clearAllStateInternal])
+
+  // Enhanced logout function with loading states
+  const logout = useCallback(async (): Promise<void> => {
+    if (!isMountedRef.current) return
+    
+    try {
+      // Set disconnecting state
+      setState(prev => ({ ...prev, isDisconnecting: true, error: undefined }))
+      
+      log.debug('[Abstract Logout] Starting logout process...')
+      
+      // Use Abstract's native logout function
+      agwLogout()
+      
+      // Clear all state and notify other components
+      await clearAllStateInternal()
+      
+      // Reset state
+      if (isMountedRef.current) {
+        setState({
+          isConnected: false,
+          isConnecting: false,
+          isDisconnecting: false
+        })
+      }
+      
+      log.debug('[Abstract Logout] Logout completed successfully')
+    } catch (error) {
+      log.error('Failed to logout:', error)
+      
+      if (isMountedRef.current) {
+        setState(prev => ({
+          ...prev,
+          isDisconnecting: false,
+          error: getWalletErrorMessage(error)
+        }))
+      }
+    }
+  }, [agwLogout, clearAllStateInternal])
 
   // Reconnect function for retry scenarios
-  const reconnect = async (): Promise<void> => {
+  const reconnect = useCallback(async (): Promise<void> => {
     await login()
-  }
+  }, [login])
 
   const detectedChain = state.chainId ? getChainFromId(state.chainId) : undefined
   
@@ -159,6 +235,7 @@ export function useAbstractWallet(): UseAbstractWalletReturn {
     login,
     logout,
     reconnect,
+    clearAllState,
     chain: detectedChain,
     chainId: state.chainId
   }

@@ -1,7 +1,10 @@
 {
+  "includeCoAuthoredBy": false,
   "permissions": {
     "allow": [
-      "Read(//c/Users/darac/Pictures/Screenshots/**)"
+      "Read(//c/Users/darac/Pictures/Screenshots/**)",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__get-library-docs"
     ],
     "deny": [],
     "ask": []

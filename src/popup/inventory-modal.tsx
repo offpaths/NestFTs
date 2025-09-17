@@ -1,12 +1,97 @@
-import React, { useEffect, useState } from "react"
+import React, { useCallback, useEffect, useState } from "react"
 
 import { useAbstractWallet } from "~hooks/useAbstractWallet"
 import type { NFTFetchError, NFTMetadata } from "~services/nft-service"
-import { formatAddress, getChainDisplayName, getWalletChainDisplayName } from "~utils/abstract-wallet"
+import {
+  formatAddress,
+  getChainDisplayName,
+  getWalletChainDisplayName
+} from "~utils/abstract-wallet"
 import { createLogger } from "~utils/logger"
-import { MODAL_CONSTANTS, STATUS_CONSTANTS, ANIMATION_CONSTANTS } from "~utils/ui-constants"
+import {
+  ANIMATION_CONSTANTS,
+  MODAL_CONSTANTS,
+  STATUS_CONSTANTS
+} from "~utils/ui-constants"
 
-const log = createLogger('InventoryModal')
+const log = createLogger("InventoryModal")
+
+// Modern clean dark theme
+const modernBackgroundStyle = {
+  background: "linear-gradient(135deg, #2c2c2e 0%, #1c1c1e 50%, #000000 100%)",
+  border: "none",
+  borderRadius: "16px",
+  boxShadow: "0 20px 60px rgba(0, 0, 0, 0.4)"
+}
+
+const modernHeaderStyle = {
+  background: "transparent",
+  padding: "20px 24px 16px 24px",
+  fontSize: "16px",
+  fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif",
+  fontWeight: "600",
+  color: "#ffffff",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  borderTopLeftRadius: "16px",
+  borderTopRightRadius: "16px",
+  borderBottom: "1px solid rgba(255, 255, 255, 0.1)"
+}
+
+const modernTextStyle = {
+  fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif",
+  fontSize: "14px",
+  color: "#ffffff",
+  lineHeight: "1.5",
+  fontWeight: "400"
+}
+
+const modernButtonStyle = {
+  background: "rgba(255, 255, 255, 0.1)",
+  border: "1px solid rgba(255, 255, 255, 0.2)",
+  borderRadius: "8px",
+  padding: "8px 16px",
+  fontSize: "14px",
+  fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif",
+  color: "#ffffff",
+  cursor: "pointer",
+  fontWeight: "500",
+  transition: "all 0.2s ease",
+  boxShadow: "none"
+}
+
+const modernPrimaryButtonStyle = {
+  background: "#ffffff",
+  border: "none",
+  borderRadius: "8px",
+  padding: "12px 24px",
+  fontSize: "14px",
+  fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif",
+  color: "#000000",
+  cursor: "pointer",
+  fontWeight: "600",
+  transition: "all 0.2s ease",
+  boxShadow: "0 4px 16px rgba(0, 0, 0, 0.1)"
+}
+
+const modernCloseStyle = {
+  background: "transparent",
+  border: "none",
+  borderRadius: "8px",
+  color: "rgba(255, 255, 255, 0.6)",
+  fontSize: "18px",
+  fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif",
+  cursor: "pointer",
+  padding: "4px",
+  width: "32px",
+  height: "32px",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontWeight: "400",
+  transition: "all 0.2s ease"
+}
 
 type Props = {
   open: boolean
@@ -29,46 +114,62 @@ function InventoryModal({
   fromCache = false,
   nftDataInfo
 }: Props) {
-  const { isConnected, address, isConnecting, error, login, logout, chain, chainId } =
-    useAbstractWallet()
-  
+  const {
+    isConnected,
+    address,
+    isConnecting,
+    isDisconnecting,
+    error,
+    login,
+    logout,
+    chain,
+    chainId
+  } = useAbstractWallet()
+
   const [selectedNFT, setSelectedNFT] = useState<string | null>(null)
   const [nftFiles, setNftFiles] = useState<Map<string, File>>(new Map())
 
   // Enhanced retry function with better UX
-  const handleRetry = () => {
+  const handleRetry = useCallback(() => {
     // Clear existing errors before retry
-    window.dispatchEvent(new CustomEvent("NFTORY_RETRY_FETCH", {
-      detail: { clearErrors: true, timestamp: Date.now() }
-    }))
-  }
+    window.dispatchEvent(
+      new CustomEvent("NFTORY_RETRY_FETCH", {
+        detail: { clearErrors: true, timestamp: Date.now() }
+      })
+    )
+  }, [])
 
   // Handle NFT click to add to compose area
-  const handleNFTClick = async (nft: NFTMetadata) => {
-    log.debug(`🎯 NFT clicked: ${nft.name}`)
-    setSelectedNFT(nft.id)
-    
-    try {
-      // Dispatch event to notify content script to handle the upload
-      window.dispatchEvent(new CustomEvent("NFTORY_NFT_CLICKED", {
-        detail: { 
-          nft,
-          file: nftFiles.get(nft.id) || null,
-          timestamp: Date.now()
-        }
-      }))
-      
-      // Close modal after dispatching event
-      setTimeout(() => {
-        onClose()
+  const handleNFTClick = useCallback(
+    async (nft: NFTMetadata) => {
+      log.debug(`🎯 NFT clicked: ${nft.name}`)
+      setSelectedNFT(nft.id)
+
+      try {
+        // Dispatch event to notify content script to handle the upload
+        window.dispatchEvent(
+          new CustomEvent("NFTORY_NFT_CLICKED", {
+            detail: {
+              nft,
+              file: nftFiles.get(nft.id) || null,
+              timestamp: Date.now()
+            }
+          })
+        )
+
+        // Close modal after dispatching event
+        setTimeout(() => {
+          onClose()
+          setSelectedNFT(null)
+        }, 100)
+      } catch (error) {
+        log.error("Failed to handle NFT click:", error)
         setSelectedNFT(null)
-      }, 100)
-      
-    } catch (error) {
-      log.error('Failed to handle NFT click:', error)
-      setSelectedNFT(null)
-    }
-  }
+      }
+    },
+    [nftFiles, onClose]
+  )
+
   useEffect(() => {
     const onEsc = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose()
@@ -82,29 +183,33 @@ function InventoryModal({
     if (open && nfts.length > 0) {
       const loadNFTFiles = async () => {
         const newFiles = new Map<string, File>()
-        
+
         for (const nft of nfts) {
           try {
             log.debug(`📥 Fetching NFT image: ${nft.name}`)
-            const response = await fetch(nft.image, { mode: 'cors' })
+            const response = await fetch(nft.image, { mode: "cors" })
             if (response.ok) {
               const blob = await response.blob()
-              const filename = `${nft.name?.replace(/[^a-zA-Z0-9]/g, '_') || 'nft'}.png`
-              const file = new File([blob], filename, { type: 'image/png' }) // Force PNG type
+              const filename = `${nft.name?.replace(/[^a-zA-Z0-9]/g, "_") || "nft"}.png`
+              const file = new File([blob], filename, { type: "image/png" }) // Force PNG type
               newFiles.set(nft.id, file)
-              log.debug(`✅ Pre-loaded file for NFT: ${nft.name} (${file.size} bytes)`)
+              log.debug(
+                `✅ Pre-loaded file for NFT: ${nft.name} (${file.size} bytes)`
+              )
             } else {
-              log.debug(`❌ Failed to fetch NFT: ${nft.name} - ${response.status}`)
+              log.debug(
+                `❌ Failed to fetch NFT: ${nft.name} - ${response.status}`
+              )
             }
           } catch (error) {
             log.debug(`❌ Error fetching NFT: ${nft.name}`, error)
           }
         }
-        
+
         setNftFiles(newFiles)
         log.debug(`🎯 File pre-loading complete: ${newFiles.size} files ready`)
       }
-      
+
       loadNFTFiles()
     }
   }, [open, nfts])
@@ -138,7 +243,7 @@ function InventoryModal({
         zIndex: MODAL_CONSTANTS.Z_INDEX,
         display: "grid",
         placeItems: position.mode === "center" ? "center" : "start",
-        background: MODAL_CONSTANTS.OVERLAY_COLOR
+        background: "rgba(0,0,0,0.15)"
       }}
       onClick={onClose}>
       <div
@@ -151,12 +256,8 @@ function InventoryModal({
           width: MODAL_CONSTANTS.WIDTH,
           maxWidth: MODAL_CONSTANTS.MAX_WIDTH,
           maxHeight: MODAL_CONSTANTS.MAX_HEIGHT,
-          background: MODAL_CONSTANTS.BACKGROUND_COLOR,
-          color: MODAL_CONSTANTS.TEXT_COLOR,
-          border: `1px solid ${MODAL_CONSTANTS.BORDER_COLOR}`,
-          borderRadius: MODAL_CONSTANTS.BORDER_RADIUS,
-          boxShadow: MODAL_CONSTANTS.BOX_SHADOW,
-          padding: MODAL_CONSTANTS.PADDING,
+          ...modernBackgroundStyle,
+          padding: "0",
           overflow: "hidden"
         }}>
         <style>{`
@@ -164,45 +265,63 @@ function InventoryModal({
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
           }
+          
+          /* Modern minimal scrollbar styling */
+          .terminal-scroll::-webkit-scrollbar {
+            width: 8px;
+            background-color: transparent;
+          }
+
+          .terminal-scroll::-webkit-scrollbar-track {
+            background-color: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+          }
+
+          .terminal-scroll::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 4px;
+            border: none;
+          }
+
+          .terminal-scroll::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.5);
+          }
+
+          .terminal-scroll::-webkit-scrollbar-button {
+            display: none;
+          }
         `}</style>
-        <header
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 8,
-            marginBottom: 12
-          }}>
-          <div style={{ fontWeight: 700 }}>Select an NFT</div>
-          <button
-            onClick={onClose}
-            aria-label="Close"
-            style={{
-              background: "transparent",
-              border: "none",
-              color: "inherit",
-              cursor: "pointer",
-              width: 32,
-              height: 32,
-              borderRadius: 16
-            }}>
+        <header style={modernHeaderStyle}>
+          <span
+            style={{ ...modernTextStyle, fontSize: "16px", fontWeight: "600" }}>
+            Wallet {address && `— ${formatAddress(address)}`}
+          </span>
+          <button onClick={onClose} aria-label="Close" style={modernCloseStyle}>
             ✕
           </button>
         </header>
 
-        <section style={{ display: "grid", gap: 8, marginBottom: 12 }}>
+        <section
+          style={{
+            display: "grid",
+            gap: 8,
+            marginBottom: 12,
+            padding: "12px 16px"
+          }}>
           {/* Status indicators */}
           {fromCache && (
             <div
               style={{
-                fontSize: 11,
-                color: STATUS_CONSTANTS.CACHE_COLOR,
-                padding: "4px 8px",
-                borderRadius: 4,
-                background: STATUS_CONSTANTS.CACHE_BG_COLOR,
-                border: `1px solid ${STATUS_CONSTANTS.CACHE_BORDER_COLOR}`
+                ...modernTextStyle,
+                fontSize: 13,
+                color: "#34C759",
+                padding: "8px 12px",
+                borderRadius: "8px",
+                background: "rgba(52, 199, 89, 0.1)",
+                border: "1px solid rgba(52, 199, 89, 0.3)",
+                fontWeight: "normal"
               }}>
-              📄 Showing cached results
+              [CACHE] DATA FROM LOCAL STORAGE
             </div>
           )}
 
@@ -210,20 +329,22 @@ function InventoryModal({
           {nftDataInfo?.hasTestData && (
             <div
               style={{
-                fontSize: 11,
-                color: "rgb(138, 180, 248)",
-                padding: "6px 10px",
-                borderRadius: 6,
-                background: "rgba(138, 180, 248, 0.1)",
-                border: "1px solid rgba(138, 180, 248, 0.3)",
+                ...modernTextStyle,
+                fontSize: 13,
+                color: "#007AFF",
+                padding: "8px 12px",
+                borderRadius: "8px",
+                background: "rgba(0, 122, 255, 0.1)",
+                border: "1px solid rgba(0, 122, 255, 0.3)",
+                fontWeight: "normal",
                 lineHeight: 1.4
               }}>
-              🧪 {nftDataInfo.testCount > 0 && nftDataInfo.realCount > 0 
-                ? `Showing ${nftDataInfo.realCount} real NFTs + ${nftDataInfo.testCount} test demos`
-                : nftDataInfo.testCount > 0 
-                  ? `Showing ${nftDataInfo.testCount} demo NFTs - real NFTs will appear when available`
-                  : 'Test data detected'
-              }
+              [TEST]{" "}
+              {nftDataInfo.testCount > 0 && nftDataInfo.realCount > 0
+                ? `${nftDataInfo.realCount} REAL + ${nftDataInfo.testCount} DEMO ITEMS`
+                : nftDataInfo.testCount > 0
+                  ? `${nftDataInfo.testCount} DEMO ITEMS LOADED`
+                  : "DEMO MODE ACTIVE"}
             </div>
           )}
 
@@ -231,18 +352,19 @@ function InventoryModal({
           {errors.length > 0 && errors.some((e) => e.isConfigurationError) && (
             <div
               style={{
-                fontSize: 12,
-                color: "rgb(255, 204, 102)",
+                ...modernTextStyle,
+                fontSize: 13,
+                color: "#FF9500",
                 padding: "8px 12px",
-                borderRadius: 6,
-                background: "rgba(255, 204, 102, 0.1)",
-                border: "1px solid rgba(255, 204, 102, 0.3)"
+                borderRadius: "8px",
+                background: "rgba(255, 149, 0, 0.1)",
+                border: "1px solid rgba(255, 149, 0, 0.3)",
+                fontWeight: "normal"
               }}>
-              ⚠️ Configuration needed:{" "}
-              {errors.find((e) => e.isConfigurationError)?.message}
+              [WARN] CONFIG ERROR: {errors.find((e) => e.isConfigurationError)?.message?.toUpperCase()}
               {errors.find((e) => e.suggestion) && (
-                <div style={{ marginTop: 4, fontSize: 11, opacity: 0.9 }}>
-                  💡 {errors.find((e) => e.suggestion)?.suggestion}
+                <div style={{ marginTop: 2, fontSize: 8, color: "#ffcc66" }}>
+                  > {errors.find((e) => e.suggestion)?.suggestion?.toUpperCase()}
                 </div>
               )}
             </div>
@@ -251,57 +373,110 @@ function InventoryModal({
           {errors.length > 0 && errors.some((e) => !e.isConfigurationError) && (
             <div
               style={{
-                fontSize: 12,
-                color: "rgb(255, 107, 107)",
+                ...modernTextStyle,
+                fontSize: 13,
+                color: "#FF453A",
                 padding: "8px 12px",
-                borderRadius: 6,
-                background: "rgba(255, 107, 107, 0.1)",
-                border: "1px solid rgba(255, 107, 107, 0.3)",
+                borderRadius: "8px",
+                background: "rgba(255, 69, 58, 0.1)",
+                border: "1px solid rgba(255, 69, 58, 0.3)",
+                fontWeight: "normal",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between"
               }}>
               <span>
-                ❌ {errors.find((e) => !e.isConfigurationError)?.message}
+                [ERROR] {errors.find((e) => !e.isConfigurationError)?.message?.toUpperCase()}
               </span>
               <button
                 onClick={handleRetry}
                 style={{
-                  padding: "4px 8px",
-                  borderRadius: 4,
-                  border: "1px solid rgba(255, 107, 107, 0.5)",
-                  background: "rgba(255, 107, 107, 0.1)",
-                  color: "rgb(255, 107, 107)",
+                  ...modernTextStyle,
+                  padding: "6px 12px",
+                  borderRadius: "6px",
+                  border: "1px solid rgba(255, 69, 58, 0.3)",
+                  background: "rgba(255, 69, 58, 0.1)",
+                  color: "#FF453A",
                   cursor: "pointer",
-                  fontSize: 10
+                  fontSize: 12,
+                  fontWeight: "500",
+                  transition: "all 0.2s ease"
                 }}>
-                Retry
+                RETRY
               </button>
             </div>
           )}
-          {!isConnected ? (
+          {isDisconnecting ? (
             <>
-              <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 8 }}>
-                Connect your wallet to view NFTs
+              <div
+                style={{
+                  ...modernTextStyle,
+                  fontSize: 10,
+                  fontWeight: "normal",
+                  marginBottom: 8
+                }}>
+                > wallet.disconnect() executing...
               </div>
-              <div style={{ 
-                fontSize: 11, 
-                opacity: 0.6, 
-                marginBottom: 12,
-                lineHeight: 1.4
-              }}>
-                ✨ Abstract provides gasless transactions<br/>
-                🔒 Create account with email or social login<br/>
-                🌍 Access your NFTs across all apps
+              <div
+                style={{
+                  ...modernTextStyle,
+                  fontSize: 9,
+                  fontWeight: "normal",
+                  marginBottom: 12,
+                  textAlign: "center",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "8px"
+                }}>
+                <div
+                  style={{
+                    width: 14,
+                    height: 14,
+                    border: "2px solid #333366",
+                    borderTop: "2px solid #00ff41",
+                    borderRadius: "50%",
+                    animation: "spin 1s linear infinite"
+                  }}></div>
+                > clearing cache memory...
+              </div>
+            </>
+          ) : !isConnected ? (
+            <>
+              <div
+                style={{
+                  ...modernTextStyle,
+                  fontSize: 10,
+                  fontWeight: "normal",
+                  marginBottom: 8
+                }}>
+                > wallet connection required
+              </div>
+              <div
+                style={{
+                  ...modernTextStyle,
+                  fontSize: 9,
+                  fontWeight: "normal",
+                  marginBottom: 12,
+                  lineHeight: 1.4
+                }}>
+                > gasless transactions enabled
+                <br />
+                > email/social auth supported
+                <br />
+                > cross-platform nft access
               </div>
               {error && (
                 <div
                   style={{
-                    fontSize: 12,
-                    color: "#ff6b6b",
-                    padding: "8px 12px",
-                    borderRadius: 6,
-                    background: "rgba(255,107,107,0.1)"
+                    ...modernTextStyle,
+                    fontSize: 9,
+                    color: "#ff4444",
+                    padding: "4px 8px",
+                    borderRadius: 0,
+                    background: "#3a0a0a",
+                    border: "1px solid #ff4444",
+                    fontWeight: "normal"
                   }}>
                   {error}
                 </div>
@@ -310,16 +485,13 @@ function InventoryModal({
                 onClick={login}
                 disabled={isConnecting}
                 style={{
-                  padding: "12px 20px",
-                  borderRadius: 999,
-                  border: "1px solid rgb(29,155,240)",
+                  ...modernPrimaryButtonStyle,
                   background: isConnecting
-                    ? "rgba(29,155,240,0.1)"
-                    : "rgb(29,155,240)",
-                  color: isConnecting ? "rgba(255,255,255,0.7)" : "#fff",
+                    ? "rgba(255, 255, 255, 0.3)"
+                    : "#ffffff",
+                  color: "#000000",
                   cursor: isConnecting ? "not-allowed" : "pointer",
-                  fontWeight: 600,
-                  transition: "all 0.2s ease",
+                  fontWeight: "bold",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
@@ -336,51 +508,34 @@ function InventoryModal({
                       animation: "spin 1s linear infinite"
                     }}></div>
                 )}
-                {isConnecting ? "Connecting to Abstract..." : "🚀 Connect with Abstract"}
+                {isConnecting
+                  ? "> connecting..."
+                  : "[CONNECT WALLET]"}
               </button>
             </>
           ) : (
             <>
-              <div style={{ fontSize: 12, opacity: 0.75 }}>
-                Connected wallet
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  padding: "8px 12px",
-                  borderRadius: 8,
-                  background: "rgba(29,155,240,0.1)",
-                  border: "1px solid rgba(29,155,240,0.3)"
-                }}>
-                <div
-                  style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                  <span style={{ fontSize: 14, color: "rgb(29,155,240)" }}>
-                    {address && formatAddress(address)}
-                  </span>
-                  {/* Show actual wallet chain, not NFT fetching chain */}
-                  <span
-                    style={{
-                      fontSize: 11,
-                      opacity: 0.8,
-                      color: "rgb(29,155,240)"
-                    }}>
-                    {getWalletChainDisplayName(chainId || 1)} → Ethereum NFTs
-                  </span>
-                </div>
+              <div>
                 <button
                   onClick={logout}
+                  disabled={isDisconnecting}
                   style={{
-                    padding: "4px 8px",
-                    borderRadius: 4,
-                    border: "none",
-                    background: "rgba(255,255,255,0.1)",
-                    color: "#fff",
-                    cursor: "pointer",
-                    fontSize: 12
+                    ...modernButtonStyle,
+                    opacity: isDisconnecting ? 0.5 : 1,
+                    cursor: isDisconnecting ? "not-allowed" : "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "4px"
                   }}>
-                  Disconnect
+                  {isDisconnecting && (
+                    <div
+                      style={{
+                        ...modernTextStyle,
+                        fontSize: "8px",
+                        fontWeight: "normal"
+                      }}></div>
+                  )}
+                  {isDisconnecting ? "> disconnecting..." : "[DISCONNECT]"}
                 </button>
               </div>
             </>
@@ -388,19 +543,25 @@ function InventoryModal({
         </section>
 
         <section
+          className="terminal-scroll"
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(3, 1fr)",
             gap: 8,
-            overflow: "auto",
-            maxHeight: 240
+            overflowY: "scroll",
+            maxHeight: 240,
+            opacity: isDisconnecting ? 0.5 : 1,
+            pointerEvents: isDisconnecting ? "none" : "auto",
+            transition: "opacity 0.2s ease",
+            padding: "12px 16px"
           }}>
-          {isLoading ? (
+          {isDisconnecting ? (
             <div
               style={{
+                ...modernTextStyle,
                 gridColumn: "1 / -1",
-                opacity: 0.7,
-                fontSize: 13,
+                fontSize: 10,
+                fontWeight: "normal",
                 textAlign: "center",
                 padding: "20px",
                 display: "flex",
@@ -417,22 +578,48 @@ function InventoryModal({
                   borderRadius: "50%",
                   animation: "spin 1s linear infinite"
                 }}></div>
-              Loading NFTs...
+              > session terminating...
+            </div>
+          ) : isLoading ? (
+            <div
+              style={{
+                ...modernTextStyle,
+                gridColumn: "1 / -1",
+                fontSize: 10,
+                fontWeight: "normal",
+                textAlign: "center",
+                padding: "20px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8
+              }}>
+              <div
+                style={{
+                  width: 16,
+                  height: 16,
+                  border: "2px solid rgba(29,155,240,0.3)",
+                  borderTop: "2px solid rgb(29,155,240)",
+                  borderRadius: "50%",
+                  animation: "spin 1s linear infinite"
+                }}></div>
+              > loading nft database...
             </div>
           ) : nfts.length === 0 ? (
             <div
               style={{
+                ...modernTextStyle,
                 gridColumn: "1 / -1",
-                opacity: 0.7,
-                fontSize: 13,
+                fontSize: 10,
+                fontWeight: "normal",
                 textAlign: "center",
                 padding: "20px"
               }}>
               {!isConnected
-                ? "Connect your wallet to view NFTs"
+                ? "> wallet connection required"
                 : errors.length > 0
-                  ? "Failed to load NFTs - check the errors above"
-                  : "No NFTs found in your wallet"}
+                  ? "> error loading nft data"
+                  : "> no nft records found"}
             </div>
           ) : (
             nfts.map((n) => (
@@ -441,17 +628,19 @@ function InventoryModal({
                 onClick={() => handleNFTClick(n)}
                 style={{
                   aspectRatio: "1 / 1",
-                  borderRadius: 8,
-                  border: selectedNFT === n.id 
-                    ? "2px solid rgb(29,155,240)" 
-                    : "1px solid rgba(239,243,244,0.2)",
+                  borderRadius: "12px",
+                  border:
+                    selectedNFT === n.id
+                      ? "2px solid #ffffff"
+                      : "1px solid rgba(255, 255, 255, 0.2)",
                   overflow: "hidden",
                   padding: 0,
-                  background: "transparent",
+                  background: selectedNFT === n.id ? "rgba(255, 255, 255, 0.1)" : "rgba(255, 255, 255, 0.05)",
                   cursor: "pointer",
-                  opacity: selectedNFT === n.id ? 0.8 : 1,
-                  transform: selectedNFT === n.id ? "scale(0.98)" : "scale(1)",
-                  transition: "all 0.2s ease"
+                  transition: "all 0.2s ease",
+                  boxShadow: selectedNFT === n.id
+                    ? "0 8px 32px rgba(255, 255, 255, 0.2)"
+                    : "0 4px 16px rgba(0, 0, 0, 0.1)"
                 }}>
                 <div
                   style={{
@@ -474,7 +663,8 @@ function InventoryModal({
                       onError={(e) => {
                         // Show fallback instead of hiding
                         e.currentTarget.style.display = "none"
-                        const fallback = e.currentTarget.nextSibling as HTMLElement
+                        const fallback = e.currentTarget
+                          .nextSibling as HTMLElement
                         if (fallback) {
                           fallback.style.display = "grid"
                         }
@@ -486,18 +676,21 @@ function InventoryModal({
                   ) : null}
                   <div
                     style={{
+                      ...modernTextStyle,
                       width: "100%",
                       height: "100%",
                       display: n.image ? "none" : "grid",
                       placeItems: "center",
-                      opacity: 0.6,
-                      fontSize: 10,
+                      fontSize: 8,
+                      fontWeight: "normal",
                       textAlign: "center",
                       padding: 4,
-                      background: "rgba(239,243,244,0.1)"
+                      background: "rgba(255, 255, 255, 0.1)",
+                      color: "rgba(255, 255, 255, 0.6)"
                     }}>
-                    🖼️<br />
-                    {n.name || "NFT"}
+                    [IMG]
+                    <br />
+                    {(n.name || "nft").toLowerCase()}
                   </div>
                 </div>
               </button>
