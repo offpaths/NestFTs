@@ -17,37 +17,41 @@ export interface AbstractWalletState {
   isConnected: boolean
   address?: Address
   isConnecting: boolean
+  isDisconnecting?: boolean
   error?: string
   chainId?: number
 }
 
 // Chain detection utilities
-export type SupportedChain = 'ethereum' | 'abstract-mainnet' | 'abstract-testnet'
+export type SupportedChain =
+  | "ethereum"
+  | "abstract-mainnet"
+  | "abstract-testnet"
 
 export function getChainFromId(chainId: number): SupportedChain {
   switch (chainId) {
     case 1: // Ethereum Mainnet
-      return 'ethereum'
+      return "ethereum"
     case 2741: // Abstract Mainnet
-      return 'abstract-mainnet'
+      return "abstract-mainnet"
     case 11124: // Abstract Testnet
-      return 'abstract-testnet'
+      return "abstract-testnet"
     default:
       console.warn(`Unknown chain ID: ${chainId}, defaulting to ethereum`)
-      return 'ethereum'
+      return "ethereum"
   }
 }
 
 export function getChainDisplayName(chain: SupportedChain): string {
   switch (chain) {
-    case 'ethereum':
-      return 'Ethereum'
-    case 'abstract-mainnet':
-      return 'Abstract Mainnet'
-    case 'abstract-testnet':
-      return 'Abstract Testnet'
+    case "ethereum":
+      return "Ethereum"
+    case "abstract-mainnet":
+      return "Abstract Mainnet"
+    case "abstract-testnet":
+      return "Abstract Testnet"
     default:
-      return 'Unknown Chain'
+      return "Unknown Chain"
   }
 }
 
@@ -55,11 +59,11 @@ export function getChainDisplayName(chain: SupportedChain): string {
 export function getWalletChainDisplayName(chainId: number): string {
   switch (chainId) {
     case 1:
-      return 'Ethereum Mainnet'
+      return "Ethereum Mainnet"
     case 2741:
-      return 'Abstract Mainnet'
+      return "Abstract Mainnet"
     case 11124:
-      return 'Abstract Testnet'
+      return "Abstract Testnet"
     default:
       return `Chain ${chainId}`
   }
@@ -74,13 +78,13 @@ export function isAbstractChain(chainId: number): boolean {
 export function getNFTFetchingChain(chainId: number): SupportedChain {
   switch (chainId) {
     case 1: // Ethereum Mainnet - fetch from ethereum
-      return 'ethereum'
+      return "ethereum"
     case 2741: // Abstract Mainnet - fetch from abstract mainnet
-      return 'abstract-mainnet'
+      return "abstract-mainnet"
     case 11124: // Abstract Testnet - fetch from ethereum as fallback
-      return 'ethereum'
+      return "ethereum"
     default:
-      return 'ethereum'
+      return "ethereum"
   }
 }
 
@@ -99,7 +103,9 @@ export async function storeWalletConnection(address: Address): Promise<void> {
       })
     } catch (error: any) {
       if (error.message?.includes("Extension context invalidated")) {
-        console.warn("Extension context invalidated during storage - this is expected during development")
+        console.warn(
+          "Extension context invalidated during storage - this is expected during development"
+        )
         return
       }
       throw error
@@ -115,7 +121,9 @@ export async function getStoredWalletConnection(): Promise<Address | null> {
       return result.abstractWalletAddress || null
     } catch (error: any) {
       if (error.message?.includes("Extension context invalidated")) {
-        console.warn("Extension context invalidated during storage retrieval - this is expected during development")
+        console.warn(
+          "Extension context invalidated during storage retrieval - this is expected during development"
+        )
         return null
       }
       throw error
@@ -124,18 +132,52 @@ export async function getStoredWalletConnection(): Promise<Address | null> {
   return null
 }
 
-// Clear stored wallet connection
+// Clear stored wallet connection and all related data
 export async function clearWalletConnection(): Promise<void> {
   if (typeof chrome !== "undefined" && chrome.storage) {
     try {
+      // Clear wallet connection data
       await chrome.storage.local.remove([
         "abstractWalletAddress",
         "abstractWalletConnectedAt"
       ])
+
+      // Clear any NFT cache data
+      const allData = await chrome.storage.local.get(null)
+      const keysToRemove = Object.keys(allData || {}).filter(
+        (key) => key.startsWith("nft_cache_") || key.startsWith("nftory_")
+      )
+
+      if (keysToRemove.length > 0) {
+        await chrome.storage.local.remove(keysToRemove)
+        console.debug(
+          `Cleared ${keysToRemove.length} cached NFT keys during disconnect`
+        )
+      }
     } catch (error: any) {
       // Handle extension context invalidation gracefully
       if (error.message?.includes("Extension context invalidated")) {
-        console.warn("Extension context invalidated during storage cleanup - this is expected during development")
+        console.warn(
+          "Extension context invalidated during storage cleanup - this is expected during development"
+        )
+        return
+      }
+      throw error
+    }
+  }
+}
+
+// Clear all extension-related cache and data
+export async function clearAllExtensionData(): Promise<void> {
+  if (typeof chrome !== "undefined" && chrome.storage) {
+    try {
+      await chrome.storage.local.clear()
+      console.debug("Cleared all extension data")
+    } catch (error: any) {
+      if (error.message?.includes("Extension context invalidated")) {
+        console.warn(
+          "Extension context invalidated during full cleanup - this is expected during development"
+        )
         return
       }
       throw error
@@ -146,7 +188,9 @@ export async function clearWalletConnection(): Promise<void> {
 // Get Abstract chain configuration for viem/wagmi
 export function getAbstractChainConfig(isMainnet: boolean = true) {
   return {
-    id: isMainnet ? ABSTRACT_CONFIG.mainnetChainId : ABSTRACT_CONFIG.testnetChainId,
+    id: isMainnet
+      ? ABSTRACT_CONFIG.mainnetChainId
+      : ABSTRACT_CONFIG.testnetChainId,
     name: isMainnet ? "Abstract Mainnet" : "Abstract Testnet",
     nativeCurrency: {
       name: "Ether",
@@ -155,13 +199,19 @@ export function getAbstractChainConfig(isMainnet: boolean = true) {
     },
     rpcUrls: {
       default: {
-        http: [isMainnet ? ABSTRACT_CONFIG.mainnetRpcUrl : ABSTRACT_CONFIG.testnetRpcUrl]
+        http: [
+          isMainnet
+            ? ABSTRACT_CONFIG.mainnetRpcUrl
+            : ABSTRACT_CONFIG.testnetRpcUrl
+        ]
       }
     },
     blockExplorers: {
       default: {
         name: "Abstract Explorer",
-        url: isMainnet ? "https://explorer.mainnet.abs.xyz" : "https://explorer.testnet.abs.xyz"
+        url: isMainnet
+          ? "https://explorer.mainnet.abs.xyz"
+          : "https://explorer.testnet.abs.xyz"
       }
     },
     testnet: !isMainnet
@@ -179,14 +229,14 @@ export function getWalletErrorMessage(error: any): string {
   if (error?.code === 4001) {
     return "User rejected the connection request"
   }
-  
+
   if (error?.message?.includes("User rejected")) {
     return "Connection was cancelled by user"
   }
-  
+
   if (error?.message?.includes("network")) {
     return "Network connection error. Please try again."
   }
-  
+
   return error?.message || "An unexpected error occurred"
 }

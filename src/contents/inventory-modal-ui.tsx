@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react"
+import React, { useEffect, useMemo, useState, useCallback, useRef } from "react"
 import { createRoot } from "react-dom/client"
 
 import { AGWProvider } from "~components/AGWProvider"
@@ -16,10 +16,12 @@ const log = createLogger('InventoryModalUI')
 /**
  * Handles NFT click upload by finding the active compose area and triggering file upload
  */
-async function handleNFTClickUpload(nft: any, preloadedFile: File | null) {
+const handleNFTClickUpload = async (nft: any, preloadedFile: File | null, abortSignal?: AbortSignal) => {
   log.debug(`🎯 Processing NFT click upload for: ${nft.name}`)
   
   try {
+    if (abortSignal?.aborted) return
+    
     // Find the currently active compose area
     const activeComposeArea = findActiveComposeArea()
     
@@ -39,6 +41,8 @@ async function handleNFTClickUpload(nft: any, preloadedFile: File | null) {
     
     // If no preloaded file, fetch the NFT image
     if (!file) {
+      if (abortSignal?.aborted) return
+      
       log.debug('No preloaded file, fetching NFT image:', nft.image)
       
       // Validate URL for security
@@ -47,7 +51,13 @@ async function handleNFTClickUpload(nft: any, preloadedFile: File | null) {
         throw new Error('Invalid URL protocol - only HTTP/HTTPS allowed')
       }
       
-      const response = await fetch(nft.image, { mode: 'cors' })
+      const response = await fetch(nft.image, { 
+        mode: 'cors',
+        signal: abortSignal
+      })
+      
+      if (abortSignal?.aborted) return
+      
       if (!response.ok) {
         throw new Error(`Failed to fetch image: ${response.status}`)
       }
@@ -57,13 +67,17 @@ async function handleNFTClickUpload(nft: any, preloadedFile: File | null) {
       file = new File([blob], filename, { type: 'image/png' })
     }
     
+    if (abortSignal?.aborted) return
+    
     // Trigger file upload using existing function
     triggerFileUploadForClick(fileInput, file)
     
     log.debug('✅ NFT click upload completed successfully')
     
   } catch (error) {
-    log.error('❌ Failed to process NFT click upload:', error)
+    if (error.name !== 'AbortError') {
+      log.error('❌ Failed to process NFT click upload:', error)
+    }
   }
 }
 
@@ -442,12 +456,60 @@ function NFTModalContent() {
   const [fetchErrors, setFetchErrors] = useState<NFTFetchError[]>([])
   const [fromCache, setFromCache] = useState(false)
   
-  // Calculate test data info
-  const nftDataInfo = useMemo(() => getNFTDataInfo(nfts), [nfts])
+  // Track mounted state for cleanup
+  const isMountedRef = useRef(true)
+  const abortControllerRef = useRef<AbortController | null>(null)
+  const nftFetchControllerRef = useRef<AbortController | null>(null)
+  
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false
+      abortControllerRef.current?.abort()
+      nftFetchControllerRef.current?.abort()
+    }
+  }, [])
+  
+  // Calculate test data info - stable dependency
+  const nftDataInfo = useMemo(() => getNFTDataInfo(nfts), [nfts.length])
 
-  const { isConnected, address, chain, chainId } = useAbstractWallet()
+  const { isConnected, address, chain, chainId, isDisconnecting } = useAbstractWallet()
   const [retryTrigger, setRetryTrigger] = useState(0)
+  
+  // Clear all NFT state and abort operations when wallet disconnects
+  const clearAllNFTState = useCallback(() => {
+    log.debug('[NFT Modal] Clearing all NFT state due to disconnect')
+    
+    // Abort any ongoing NFT fetch operations
+    nftFetchControllerRef.current?.abort()
+    nftFetchControllerRef.current = null
+    
+    // Clear all NFT-related state
+    if (isMountedRef.current) {
+      setNfts([])
+      setFetchErrors([])
+      setFromCache(false)
+      setIsLoadingNFTs(false)
+    }
+  }, [])
 
+  // Listen for wallet disconnect events
+  useEffect(() => {
+    const handleWalletDisconnect = () => {
+      log.debug('[NFT Modal] Wallet disconnect event received')
+      clearAllNFTState()
+      // Close modal on disconnect
+      if (open) {
+        setOpen(false)
+      }
+    }
+    
+    window.addEventListener('NFTORY_WALLET_DISCONNECTED', handleWalletDisconnect)
+    
+    return () => {
+      window.removeEventListener('NFTORY_WALLET_DISCONNECTED', handleWalletDisconnect)
+    }
+  }, [clearAllNFTState, open])
+  
   useEffect(() => {
     log.debug("Setting up modal event listener for:", AppConfig.TOGGLE_EVENT_TYPE)
     
@@ -489,7 +551,11 @@ function NFTModalContent() {
       }
       
       if (detail?.nft) {
-        await handleNFTClickUpload(detail.nft, detail.file)
+        // Create new abort controller for this upload
+        const controller = new AbortController()
+        abortControllerRef.current = controller
+        
+        await handleNFTClickUpload(detail.nft, detail.file, controller.signal)
       }
     }
     
@@ -508,13 +574,25 @@ function NFTModalContent() {
 
   // Fetch NFTs when wallet is connected
   useEffect(() => {
+    // Don't fetch if wallet is in disconnecting state
+    if (isDisconnecting) {
+      return
+    }
+    
+    const controller = new AbortController()
+    nftFetchControllerRef.current = controller
+    
     const loadNFTs = async () => {
-      if (isConnected && address) {
+      if (!isMountedRef.current) return
+      
+      if (isConnected && address && !isDisconnecting) {
         setIsLoadingNFTs(true)
         setFetchErrors([])
         setFromCache(false)
         
         try {
+          if (controller.signal.aborted || !isMountedRef.current) return
+          
           // Use detected chain or default to ethereum
           const targetChain = chain || 'ethereum'
           log.debug(`Fetching NFTs for chain: ${targetChain}`, {
@@ -522,7 +600,10 @@ function NFTModalContent() {
             detectedChain: chain,
             address: formatAddress(address)
           })
+          
           const result = await fetchUserNFTsWithCache(address, targetChain)
+          
+          if (controller.signal.aborted || !isMountedRef.current || isDisconnecting) return
           
           setNfts(result.nfts)
           setFetchErrors(result.errors || [])
@@ -537,30 +618,40 @@ function NFTModalContent() {
           }
           
         } catch (error) {
-          log.error("Critical NFT fetch failure:", error)
-          setNfts([])
-          setFetchErrors([{
-            service: 'unknown',
-            message: error?.message || 'Unknown error occurred',
-            isConfigurationError: false
-          }])
+          if (!controller.signal.aborted && isMountedRef.current && !isDisconnecting) {
+            log.error("Critical NFT fetch failure:", error)
+            setNfts([])
+            setFetchErrors([{
+              service: 'unknown',
+              message: error?.message || 'Unknown error occurred',
+              isConfigurationError: false
+            }])
+          }
         } finally {
-          setIsLoadingNFTs(false)
+          if (isMountedRef.current && !isDisconnecting) {
+            setIsLoadingNFTs(false)
+          }
         }
       } else {
-        setNfts([])
-        setFetchErrors([])
-        setFromCache(false)
+        // Clear state when not connected or disconnecting
+        clearAllNFTState()
       }
     }
 
     loadNFTs()
-  }, [isConnected, address, retryTrigger]) // Add retryTrigger to dependencies
+    
+    return () => {
+      controller.abort()
+      if (nftFetchControllerRef.current === controller) {
+        nftFetchControllerRef.current = null
+      }
+    }
+  }, [isConnected, address, chain, retryTrigger, isDisconnecting, clearAllNFTState]) // Add isDisconnecting and clearAllNFTState to dependencies
 
   const position = useMemo(() => {
     if (!anchor) return { mode: "center" as const }
     return { mode: "anchor" as const, x: anchor.x, y: anchor.y }
-  }, [anchor])
+  }, [anchor?.x, anchor?.y]) // More stable dependencies
 
 
   return (

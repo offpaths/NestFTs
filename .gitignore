@@ -40,5 +40,5 @@ keys.json
 
 # typescript
 .tsbuildinfo
-.claude
+.claude/
 
