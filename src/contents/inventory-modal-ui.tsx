@@ -81,8 +81,12 @@ const handleNFTClickUpload = async (nft: any, preloadedFile: File | null, abortS
   }
 }
 
+// Global state for observer-based detection
+let composeAreaObserver: MutationObserver | null = null
+let recentlyAddedComposeAreas: Set<Element> = new Set()
+
 /**
- * Finds the currently active compose area with Twitter-specific modal detection
+ * Finds the currently active compose area with enhanced robustness
  */
 function findActiveComposeArea(): Element | null {
   // Strategy 1: Check for currently focused compose area
@@ -90,35 +94,160 @@ function findActiveComposeArea(): Element | null {
   if (focusedElement && isValidComposeElement(focusedElement)) {
     return focusedElement
   }
-  
-  // Strategy 2: Look for compose areas in Twitter modals/overlays (highest priority)
+
+  // Strategy 2: Check recently detected compose areas from observer
+  for (const recentArea of recentlyAddedComposeAreas) {
+    if (isValidComposeElement(recentArea) && document.contains(recentArea)) {
+      const score = scoreComposeElement(recentArea)
+      if (score > 30) { // High score threshold for recent areas
+        return recentArea
+      }
+    }
+  }
+
+  // Strategy 3: Look for compose areas in Twitter modals/overlays (highest priority)
   const modalCompose = findModalComposeArea()
   if (modalCompose) {
     return modalCompose
   }
-  
-  // Strategy 3: Find the topmost visible compose area
-  const visibleCompose = findTopMostVisibleComposeArea()
+
+  // Strategy 4: Enhanced visibility-based detection with scoring
+  const visibleCompose = findBestVisibleComposeArea()
   if (visibleCompose) {
     return visibleCompose
   }
-  
-  // Strategy 4: Fallback to any visible compose area
+
+  // Strategy 5: Expanded fallback selectors with modern Twitter patterns
   const composeSelectors = [
-    '[role="textbox"]',
+    // Modern React-based selectors
+    '[role="textbox"][data-testid*="tweet"]',
+    '[role="textbox"][contenteditable="true"]',
     '[data-testid*="tweetTextarea"]',
     '[data-testid="tweetTextarea_0"]',
-    '[contenteditable="true"]'
+    '[data-testid*="replyTextarea"]',
+    '[data-testid="dmComposerTextInput"]',
+
+    // Aria-based selectors for accessibility
+    '[aria-label*="Post text"]',
+    '[aria-label*="Tweet text"]',
+    '[aria-label*="Reply"]',
+    '[aria-label*="What is happening"]',
+
+    // Generic fallbacks
+    '[role="textbox"]',
+    '[contenteditable="true"][data-text]',
+    'div[contenteditable="true"]:not([data-slate-editor])', // Exclude other editors
+
+    // Legacy selectors
+    '.tweet-box',
+    '.compose-text'
   ]
-  
+
+  // Try selectors with validation and scoring
+  let bestElement = null
+  let bestScore = 0
+
   for (const selector of composeSelectors) {
-    const element = document.querySelector(selector)
-    if (element && isValidComposeElement(element)) {
-      return element
+    const elements = document.querySelectorAll(selector)
+    for (const element of elements) {
+      if (isValidComposeElement(element)) {
+        const score = scoreComposeElement(element)
+        if (score > bestScore) {
+          bestScore = score
+          bestElement = element
+        }
+      }
     }
   }
-  
-  return null
+
+  return bestElement
+}
+
+/**
+ * Initializes observer-based compose area detection
+ */
+function initializeComposeAreaObserver(): void {
+  // Clean up existing observer
+  if (composeAreaObserver) {
+    composeAreaObserver.disconnect()
+  }
+
+  // Clear recent areas periodically
+  setInterval(() => {
+    recentlyAddedComposeAreas.clear()
+  }, 30000) // Clear every 30 seconds
+
+  composeAreaObserver = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      // Check for added nodes that might contain compose areas
+      for (const node of mutation.addedNodes) {
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          const element = node as Element
+
+          // Check if the added element itself is a compose area
+          if (isValidComposeElement(element)) {
+            recentlyAddedComposeAreas.add(element)
+            log.debug('📝 New compose area detected by observer:', element)
+          }
+
+          // Check for compose areas within the added element
+          const composeSelectors = [
+            '[role="textbox"]',
+            '[data-testid*="tweetTextarea"]',
+            '[contenteditable="true"]'
+          ]
+
+          for (const selector of composeSelectors) {
+            const foundAreas = element.querySelectorAll(selector)
+            for (const area of foundAreas) {
+              if (isValidComposeElement(area)) {
+                recentlyAddedComposeAreas.add(area)
+                log.debug('📝 New compose area found in added element:', area)
+              }
+            }
+          }
+        }
+      }
+
+      // Clean up references to removed compose areas
+      for (const node of mutation.removedNodes) {
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          const element = node as Element
+          recentlyAddedComposeAreas.delete(element)
+
+          // Remove any child compose areas that were removed
+          recentlyAddedComposeAreas.forEach(area => {
+            if (!document.contains(area)) {
+              recentlyAddedComposeAreas.delete(area)
+            }
+          })
+        }
+      }
+    }
+  })
+
+  // Start observing with optimized settings
+  composeAreaObserver.observe(document.body, {
+    childList: true,
+    subtree: true,
+    attributes: false, // Don't watch attributes for performance
+    attributeOldValue: false,
+    characterData: false
+  })
+
+  log.debug('🔍 Compose area observer initialized')
+}
+
+/**
+ * Cleanup function for observer-based detection
+ */
+function cleanupComposeAreaObserver(): void {
+  if (composeAreaObserver) {
+    composeAreaObserver.disconnect()
+    composeAreaObserver = null
+  }
+  recentlyAddedComposeAreas.clear()
+  log.debug('🧹 Compose area observer cleaned up')
 }
 
 /**
@@ -187,6 +316,80 @@ function isElementOnTop(element: Element): boolean {
 }
 
 /**
+ * Scores a compose element based on visibility, position, and context
+ */
+function scoreComposeElement(element: Element): number {
+  let score = 0
+
+  const rect = element.getBoundingClientRect()
+  const style = window.getComputedStyle(element)
+
+  // Size scoring (larger elements get higher scores)
+  score += Math.min(rect.width / 100, 10) // Max 10 points for width
+  score += Math.min(rect.height / 20, 5)  // Max 5 points for height
+
+  // Visibility scoring
+  if (style.visibility !== 'hidden' && style.display !== 'none') score += 10
+  if (parseFloat(style.opacity) > 0.5) score += 5
+
+  // Position scoring (prefer elements in viewport)
+  if (rect.top >= 0 && rect.bottom <= window.innerHeight) score += 15
+  if (rect.left >= 0 && rect.right <= window.innerWidth) score += 10
+
+  // Z-index scoring (higher z-index = likely to be active modal)
+  const zIndex = parseInt(style.zIndex) || 0
+  if (zIndex > 0) score += Math.min(zIndex / 100, 10)
+
+  // Context scoring (check for Twitter-specific indicators)
+  if (element.closest('[role="dialog"]')) score += 20  // In modal
+  if (element.closest('[aria-modal="true"]')) score += 20 // In modal
+  if (element.closest('[data-testid*="Modal"]')) score += 15 // Twitter modal
+  if (element.getAttribute('aria-label')?.includes('Post')) score += 10
+  if (element.getAttribute('data-testid')?.includes('tweet')) score += 10
+
+  // Focus scoring
+  if (document.activeElement === element) score += 25
+  if (element.contains(document.activeElement)) score += 15
+
+  // Penalize elements that seem inactive
+  if (element.hasAttribute('disabled')) score -= 20
+  if (element.hasAttribute('readonly')) score -= 20
+  if (style.pointerEvents === 'none') score -= 10
+
+  return Math.max(0, score)
+}
+
+/**
+ * Enhanced visibility-based detection with scoring
+ */
+function findBestVisibleComposeArea(): Element | null {
+  const composeSelectors = [
+    '[role="textbox"]',
+    '[data-testid*="tweetTextarea"]',
+    '[contenteditable="true"]'
+  ]
+
+  let bestElement = null
+  let bestScore = 0
+
+  for (const selector of composeSelectors) {
+    const elements = document.querySelectorAll(selector)
+
+    for (const element of elements) {
+      if (!isValidComposeElement(element)) continue
+
+      const score = scoreComposeElement(element)
+      if (score > bestScore) {
+        bestScore = score
+        bestElement = element
+      }
+    }
+  }
+
+  return bestElement
+}
+
+/**
  * Finds the topmost visible compose area (highest on screen)
  * If a modal is present, excludes background compose areas
  */
@@ -236,25 +439,80 @@ function findTopMostVisibleComposeArea(): Element | null {
 
 
 /**
- * Validates that an element is a suitable compose area
+ * Enhanced validation for compose area elements
  */
 function isValidComposeElement(element: Element): boolean {
-  // Skip hidden or disabled elements
+  if (!element) return false
+
+  // Skip non-interactive elements
+  const tagName = element.tagName.toLowerCase()
+  const role = element.getAttribute('role')
+  const contentEditable = element.getAttribute('contenteditable')
+
+  // Must be either a textbox role, contenteditable, or specific input types
+  const isTextInput = (
+    role === 'textbox' ||
+    contentEditable === 'true' ||
+    (tagName === 'input' && ['text', 'search'].includes((element as HTMLInputElement).type)) ||
+    tagName === 'textarea'
+  )
+
+  if (!isTextInput) return false
+
+  // Skip disabled or readonly elements
   if (element.hasAttribute('disabled') || element.hasAttribute('readonly')) {
     return false
   }
-  
+
+  // Check computed styles
   const style = window.getComputedStyle(element)
-  if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+  if (style.display === 'none' || style.visibility === 'hidden') {
     return false
   }
-  
+
+  // Check opacity (allow slightly transparent elements)
+  const opacity = parseFloat(style.opacity)
+  if (opacity < 0.1) return false
+
   // Must be visible and have reasonable dimensions
   const rect = element.getBoundingClientRect()
-  if (rect.width < 50 || rect.height < 20) {
+  if (rect.width < 30 || rect.height < 15) {
     return false
   }
-  
+
+  // Must be within viewport (with some tolerance for modals)
+  const isInViewport = (
+    rect.bottom > -100 && rect.top < window.innerHeight + 100 &&
+    rect.right > -100 && rect.left < window.innerWidth + 100
+  )
+  if (!isInViewport) return false
+
+  // Check if element can receive focus (important for text inputs)
+  if (style.pointerEvents === 'none') return false
+
+  // Additional Twitter-specific validation
+  const ariaLabel = element.getAttribute('aria-label')
+  const dataTestId = element.getAttribute('data-testid')
+
+  // Exclude known non-compose elements
+  if (ariaLabel && (
+    ariaLabel.includes('Search') ||
+    ariaLabel.includes('search') ||
+    ariaLabel.includes('Username') ||
+    ariaLabel.includes('Password')
+  )) {
+    return false
+  }
+
+  if (dataTestId && (
+    dataTestId.includes('search') ||
+    dataTestId.includes('Search') ||
+    dataTestId.includes('login') ||
+    dataTestId.includes('username')
+  )) {
+    return false
+  }
+
   return true
 }
 
@@ -462,10 +720,14 @@ function NFTModalContent() {
   const nftFetchControllerRef = useRef<AbortController | null>(null)
   
   useEffect(() => {
+    // Initialize compose area observer for better detection
+    initializeComposeAreaObserver()
+
     return () => {
       isMountedRef.current = false
       abortControllerRef.current?.abort()
       nftFetchControllerRef.current?.abort()
+      cleanupComposeAreaObserver()
     }
   }, [])
   
@@ -478,11 +740,13 @@ function NFTModalContent() {
   // Clear all NFT state and abort operations when wallet disconnects
   const clearAllNFTState = useCallback(() => {
     log.debug('[NFT Modal] Clearing all NFT state due to disconnect')
-    
+
     // Abort any ongoing NFT fetch operations
-    nftFetchControllerRef.current?.abort()
-    nftFetchControllerRef.current = null
-    
+    if (nftFetchControllerRef.current) {
+      nftFetchControllerRef.current.abort()
+      nftFetchControllerRef.current = null
+    }
+
     // Clear all NFT-related state
     if (isMountedRef.current) {
       setNfts([])
@@ -497,10 +761,7 @@ function NFTModalContent() {
     const handleWalletDisconnect = () => {
       log.debug('[NFT Modal] Wallet disconnect event received')
       clearAllNFTState()
-      // Close modal on disconnect
-      if (open) {
-        setOpen(false)
-      }
+      // Keep modal open to show connect wallet interface
     }
     
     window.addEventListener('NFTORY_WALLET_DISCONNECTED', handleWalletDisconnect)
@@ -578,7 +839,10 @@ function NFTModalContent() {
     if (isDisconnecting) {
       return
     }
-    
+
+    // Abort any previous fetch operations
+    nftFetchControllerRef.current?.abort()
+
     const controller = new AbortController()
     nftFetchControllerRef.current = controller
     
@@ -589,17 +853,13 @@ function NFTModalContent() {
         setIsLoadingNFTs(true)
         setFetchErrors([])
         setFromCache(false)
-        
+
         try {
           if (controller.signal.aborted || !isMountedRef.current) return
-          
-          // Use detected chain or default to ethereum
-          const targetChain = chain || 'ethereum'
-          log.debug(`Fetching NFTs for chain: ${targetChain}`, {
-            walletChainId: chainId,
-            detectedChain: chain,
-            address: formatAddress(address)
-          })
+
+          // For NFT fetching, prefer Ethereum where most NFTs exist
+          // Abstract wallets can hold NFTs on any chain, but Ethereum has the most
+          const targetChain = 'ethereum'
           
           const result = await fetchUserNFTsWithCache(address, targetChain)
           
@@ -608,14 +868,23 @@ function NFTModalContent() {
           setNfts(result.nfts)
           setFetchErrors(result.errors || [])
           setFromCache(result.fromCache || false)
-          
-          // Log for debugging
-          if (result.errors?.length) {
-            log.warn('NFT fetch completed with errors:', result.errors)
+
+          // If we got empty results from cache, try fresh fetch
+          if (result.fromCache && (!result.nfts || result.nfts.length === 0)) {
+            try {
+              // Clear cache and fetch fresh data
+              await chrome.storage.local.remove(`nft-cache-${address}-${targetChain}`)
+              const freshResult = await fetchUserNFTsWithCache(address, targetChain)
+
+              if (freshResult.nfts && freshResult.nfts.length > 0) {
+                setNfts(freshResult.nfts)
+                setFromCache(false)
+              }
+            } catch (freshError) {
+              // Silently handle fresh fetch errors
+            }
           }
-          if (result.fromCache) {
-            log.debug('NFT data loaded from cache')
-          }
+
           
         } catch (error) {
           if (!controller.signal.aborted && isMountedRef.current && !isDisconnecting) {
@@ -646,7 +915,7 @@ function NFTModalContent() {
         nftFetchControllerRef.current = null
       }
     }
-  }, [isConnected, address, chain, retryTrigger, isDisconnecting, clearAllNFTState]) // Add isDisconnecting and clearAllNFTState to dependencies
+  }, [isConnected, address, chain, retryTrigger, isDisconnecting]) // Remove clearAllNFTState to avoid stale closures
 
   const position = useMemo(() => {
     if (!anchor) return { mode: "center" as const }
