@@ -48,6 +48,41 @@ export const MODAL_CONSTANTS = {
   Z_INDEX: 2147483647 // Maximum safe z-index value
 } as const
 
+// Viewport positioning constants (additive enhancement)
+export const VIEWPORT_CONSTANTS = {
+  // Safe distances from viewport edges
+  VIEWPORT_EDGE_PADDING: 12, // Minimum distance from any viewport edge
+  VIEWPORT_CORNER_PADDING: 16, // Extra padding when positioned in corners
+
+  // Viewport detection thresholds
+  CUTOFF_THRESHOLD: 10, // Pixels of modal that can be outside viewport before repositioning
+
+  // Positioning preferences (in order of priority)
+  PREFERRED_POSITIONS: [
+    'bottom-right', // Default: below and to the right of anchor
+    'bottom-left',  // Below and to the left
+    'top-right',    // Above and to the right
+    'top-left',     // Above and to the left
+    'bottom-center', // Directly below
+    'top-center',   // Directly above
+    'center-right', // Right side, vertically centered
+    'center-left'   // Left side, vertically centered
+  ] as const,
+
+  // Transform origins for smooth positioning
+  TRANSFORM_ORIGINS: {
+    'bottom-right': 'top left',
+    'bottom-left': 'top right',
+    'top-right': 'bottom left',
+    'top-left': 'bottom right',
+    'bottom-center': 'top center',
+    'top-center': 'bottom center',
+    'center-right': 'center left',
+    'center-left': 'center right',
+    'center': 'center'
+  } as const
+} as const
+
 // Status indicators and error styling
 export const STATUS_CONSTANTS = {
   // Cache indicator
@@ -79,7 +114,15 @@ export const STATUS_CONSTANTS = {
   FONT_SIZE_DEFAULT: 11,
   FONT_SIZE_MEDIUM: 12,
   FONT_SIZE_LARGE: 13,
-  FONT_SIZE_HEADER: 14
+  FONT_SIZE_HEADER: 14,
+
+  // Wallet dropdown colors
+  DROPDOWN_BG_COLOR: "rgba(255, 255, 255, 0.1)",
+  DROPDOWN_BORDER_COLOR: "rgba(255, 255, 255, 0.2)",
+  DROPDOWN_HOVER_BG_COLOR: "rgba(255, 255, 255, 0.15)",
+  DROPDOWN_DISCONNECT_COLOR: "#FF453A",
+  DROPDOWN_DISCONNECT_BG_COLOR: "rgba(255, 69, 58, 0.1)",
+  DROPDOWN_DISCONNECT_HOVER_BG_COLOR: "rgba(255, 69, 58, 0.2)"
 } as const
 
 // Animation and timing constants
@@ -104,10 +147,10 @@ export const ANIMATION_CONSTANTS = {
   MODAL_TIMING_FUNCTION: "cubic-bezier(0.34, 1.56, 0.64, 1)", // snappy ease-out with slight overshoot
   MODAL_SCALE_START: 0,
   MODAL_SCALE_END: 1,
-  
+
   // Transform origins for all 4 quadrants
   MODAL_TRANSFORM_ORIGIN_TOP_LEFT: "top left",
-  MODAL_TRANSFORM_ORIGIN_TOP_RIGHT: "top right", 
+  MODAL_TRANSFORM_ORIGIN_TOP_RIGHT: "top right",
   MODAL_TRANSFORM_ORIGIN_BOTTOM_LEFT: "bottom left",
   MODAL_TRANSFORM_ORIGIN_BOTTOM_RIGHT: "bottom right",
   MODAL_TRANSFORM_ORIGIN_TOP_CENTER: "top center",
@@ -115,8 +158,14 @@ export const ANIMATION_CONSTANTS = {
   MODAL_TRANSFORM_ORIGIN_CENTER_LEFT: "center left",
   MODAL_TRANSFORM_ORIGIN_CENTER_RIGHT: "center right",
   MODAL_TRANSFORM_ORIGIN_CENTER: "center",
-  
-  OVERLAY_FADE_DURATION: "120ms"
+
+  OVERLAY_FADE_DURATION: "120ms",
+
+  // Wallet dropdown animation constants
+  DROPDOWN_EXPAND_DURATION: "200ms",
+  DROPDOWN_SLIDE_DURATION: "190ms",
+  DROPDOWN_TIMING_FUNCTION: "cubic-bezier(0.16, 1, 0.3, 1)", // Smooth ease-out
+  DROPDOWN_HOVER_DELAY: "100ms" // Small delay before showing disconnect option
 } as const
 
 // API and cache timing constants

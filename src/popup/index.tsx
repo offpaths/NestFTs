@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react"
 
 import "~style.css"
+import { createLogger } from "~utils/logger"
+
+const log = createLogger('PopupIndex')
 
 function IndexPopup() {
   const [currentUrl, setCurrentUrl] = useState<string>("")
@@ -10,7 +13,7 @@ function IndexPopup() {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
       setCurrentUrl(tab?.url || "Unable to get URL")
     } catch (error) {
-      console.error("Failed to get current URL:", error)
+      log.error("Failed to get current URL:", error)
       setCurrentUrl("Error getting URL")
     }
   }

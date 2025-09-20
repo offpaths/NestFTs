@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react"
 
+import { WalletDropdown } from "~components/WalletDropdown"
 import { useAbstractWallet } from "~hooks/useAbstractWallet"
 import type { NFTFetchError, NFTMetadata } from "~services/nft-service"
 import {
@@ -11,14 +12,122 @@ import { createLogger } from "~utils/logger"
 import {
   ANIMATION_CONSTANTS,
   MODAL_CONSTANTS,
-  STATUS_CONSTANTS
+  STATUS_CONSTANTS,
+  VIEWPORT_CONSTANTS
 } from "~utils/ui-constants"
 
 const log = createLogger("InventoryModal")
 
+/**
+ * Ensures modal stays within viewport bounds - non-disruptive enhancement
+ * Falls back gracefully to original positioning if calculation fails
+ */
+function ensureModalWithinViewport(
+  originalStyle: { top?: string; left?: string },
+  modalWidth: number,
+  modalHeight: number,
+  anchorX?: number,
+  anchorY?: number
+): { style: { top?: string; left?: string }, transformOrigin?: string } {
+  try {
+    // If no positioning provided or center mode, return unchanged
+    if (!originalStyle.top || !originalStyle.left) {
+      return { style: originalStyle }
+    }
+
+    // Parse original positioning
+    const originalTop = parseInt(originalStyle.top.replace('px', ''))
+    const originalLeft = parseInt(originalStyle.left.replace('px', ''))
+
+    // Get viewport dimensions
+    const viewportWidth = window.innerWidth
+    const viewportHeight = window.innerHeight
+
+    // Calculate modal bounds with original positioning
+    const modalRight = originalLeft + modalWidth
+    const modalBottom = originalTop + modalHeight
+
+    // Check if modal would be cut off (with threshold tolerance)
+    const cutOffRight = modalRight > (viewportWidth - VIEWPORT_CONSTANTS.CUTOFF_THRESHOLD)
+    const cutOffBottom = modalBottom > (viewportHeight - VIEWPORT_CONSTANTS.CUTOFF_THRESHOLD)
+    const cutOffLeft = originalLeft < VIEWPORT_CONSTANTS.CUTOFF_THRESHOLD
+    const cutOffTop = originalTop < VIEWPORT_CONSTANTS.CUTOFF_THRESHOLD
+
+    // If no cutoff detected, keep original positioning
+    if (!cutOffRight && !cutOffBottom && !cutOffLeft && !cutOffTop) {
+      return { style: originalStyle }
+    }
+
+    log.debug('Modal would be cut off, adjusting position', {
+      cutOffRight, cutOffBottom, cutOffLeft, cutOffTop,
+      originalTop, originalLeft, modalWidth, modalHeight
+    })
+
+    // Calculate safe positioning
+    let adjustedTop = originalTop
+    let adjustedLeft = originalLeft
+    let transformOrigin = VIEWPORT_CONSTANTS.TRANSFORM_ORIGINS['bottom-right'] // Default
+
+    // Adjust horizontal position
+    if (cutOffRight) {
+      adjustedLeft = viewportWidth - modalWidth - VIEWPORT_CONSTANTS.VIEWPORT_EDGE_PADDING
+      transformOrigin = VIEWPORT_CONSTANTS.TRANSFORM_ORIGINS['bottom-left']
+    } else if (cutOffLeft) {
+      adjustedLeft = VIEWPORT_CONSTANTS.VIEWPORT_EDGE_PADDING
+      transformOrigin = VIEWPORT_CONSTANTS.TRANSFORM_ORIGINS['bottom-right']
+    }
+
+    // Adjust vertical position
+    if (cutOffBottom) {
+      adjustedTop = viewportHeight - modalHeight - VIEWPORT_CONSTANTS.VIEWPORT_EDGE_PADDING
+      transformOrigin = cutOffRight
+        ? VIEWPORT_CONSTANTS.TRANSFORM_ORIGINS['top-left']
+        : cutOffLeft
+          ? VIEWPORT_CONSTANTS.TRANSFORM_ORIGINS['top-right']
+          : VIEWPORT_CONSTANTS.TRANSFORM_ORIGINS['top-center']
+    } else if (cutOffTop) {
+      adjustedTop = VIEWPORT_CONSTANTS.VIEWPORT_EDGE_PADDING
+      transformOrigin = cutOffRight
+        ? VIEWPORT_CONSTANTS.TRANSFORM_ORIGINS['bottom-left']
+        : cutOffLeft
+          ? VIEWPORT_CONSTANTS.TRANSFORM_ORIGINS['bottom-right']
+          : VIEWPORT_CONSTANTS.TRANSFORM_ORIGINS['bottom-center']
+    }
+
+    // Ensure we don't exceed safe bounds after adjustment
+    adjustedLeft = Math.max(
+      VIEWPORT_CONSTANTS.VIEWPORT_EDGE_PADDING,
+      Math.min(adjustedLeft, viewportWidth - modalWidth - VIEWPORT_CONSTANTS.VIEWPORT_EDGE_PADDING)
+    )
+    adjustedTop = Math.max(
+      VIEWPORT_CONSTANTS.VIEWPORT_EDGE_PADDING,
+      Math.min(adjustedTop, viewportHeight - modalHeight - VIEWPORT_CONSTANTS.VIEWPORT_EDGE_PADDING)
+    )
+
+    log.debug('Modal position adjusted for viewport', {
+      from: { top: originalTop, left: originalLeft },
+      to: { top: adjustedTop, left: adjustedLeft },
+      transformOrigin
+    })
+
+    return {
+      style: {
+        top: `${adjustedTop}px`,
+        left: `${adjustedLeft}px`
+      },
+      transformOrigin
+    }
+
+  } catch (error) {
+    // Graceful fallback to original positioning
+    log.debug('Viewport positioning failed, using original position', error)
+    return { style: originalStyle }
+  }
+}
+
 // Modern clean dark theme
 const modernBackgroundStyle = {
-  background: "linear-gradient(135deg, #2c2c2e 0%, #1c1c1e 50%, #000000 100%)",
+  background: "linear-gradient(135deg, #3b82f6 0%, #1e3a8a 15%, #000000 100%)",
   border: "none",
   borderRadius: "16px",
   boxShadow: "0 20px 60px rgba(0, 0, 0, 0.4)"
@@ -80,7 +189,7 @@ const modernCloseStyle = {
   border: "none",
   borderRadius: "8px",
   color: "rgba(255, 255, 255, 0.6)",
-  fontSize: "18px",
+  fontSize: "20px",
   fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif",
   cursor: "pointer",
   padding: "4px",
@@ -89,7 +198,7 @@ const modernCloseStyle = {
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  fontWeight: "400",
+  fontWeight: "900", // Make it much thicker
   transition: "all 0.2s ease"
 }
 
@@ -216,6 +325,7 @@ function InventoryModal({
 
   if (!open) return null
 
+  // Preserve existing anchored positioning logic (unchanged)
   const anchored =
     position.mode === "anchor"
       ? {
@@ -226,7 +336,7 @@ function InventoryModal({
           top: `${position.y + MODAL_CONSTANTS.ANCHOR_OFFSET_Y}px`,
           /*
           Subtracting offset pixels shifts the modal leftwards to align it properly relative to the anchor.
-          This accounts for the modal width and desired alignment so 
+          This accounts for the modal width and desired alignment so
           the modal doesn't appear strictly to the right of the click.
 
           Edge padding prevents the modal from being cut off at the edge
@@ -234,6 +344,15 @@ function InventoryModal({
           left: `${Math.max(position.x - MODAL_CONSTANTS.ANCHOR_OFFSET_X, MODAL_CONSTANTS.EDGE_PADDING)}px`
         }
       : {}
+
+  // Apply viewport-aware positioning enhancement (non-disruptive)
+  const { style: safePosition, transformOrigin } = ensureModalWithinViewport(
+    anchored,
+    MODAL_CONSTANTS.WIDTH,
+    400, // Approximate modal height
+    position.mode === "anchor" ? position.x : undefined,
+    position.mode === "anchor" ? position.y : undefined
+  )
 
   return (
     <div
@@ -252,13 +371,14 @@ function InventoryModal({
         onClick={(e) => e.stopPropagation()}
         style={{
           position: position.mode === "center" ? "relative" : "absolute",
-          ...anchored,
+          ...(position.mode === "center" ? {} : safePosition), // Use safe positioning for anchored mode
           width: MODAL_CONSTANTS.WIDTH,
           maxWidth: MODAL_CONSTANTS.MAX_WIDTH,
           maxHeight: MODAL_CONSTANTS.MAX_HEIGHT,
           ...modernBackgroundStyle,
           padding: "0",
-          overflow: "hidden"
+          overflow: "hidden",
+          transformOrigin: transformOrigin || "center" // Add transform origin for smooth positioning
         }}>
         <style>{`
           @keyframes spin {
@@ -292,10 +412,23 @@ function InventoryModal({
           }
         `}</style>
         <header style={modernHeaderStyle}>
-          <span
-            style={{ ...modernTextStyle, fontSize: "16px", fontWeight: "600" }}>
-            Wallet {address && `— ${formatAddress(address)}`}
-          </span>
+          {isConnected && address ? (
+            <WalletDropdown
+              address={address}
+              chainId={chainId}
+              onDisconnect={logout}
+              isDisconnecting={isDisconnecting}
+            />
+          ) : (
+            <span
+              style={{
+                ...modernTextStyle,
+                fontSize: "16px",
+                fontWeight: "600"
+              }}>
+              Wallet
+            </span>
+          )}
           <button onClick={onClose} aria-label="Close" style={modernCloseStyle}>
             ✕
           </button>
@@ -305,25 +438,10 @@ function InventoryModal({
           style={{
             display: "grid",
             gap: 8,
-            marginBottom: 12,
-            padding: "12px 16px"
+            marginBottom: 0,
+            padding: "0 16px 12px 16px"
           }}>
           {/* Status indicators */}
-          {fromCache && (
-            <div
-              style={{
-                ...modernTextStyle,
-                fontSize: 13,
-                color: "#34C759",
-                padding: "8px 12px",
-                borderRadius: "8px",
-                background: "rgba(52, 199, 89, 0.1)",
-                border: "1px solid rgba(52, 199, 89, 0.3)",
-                fontWeight: "normal"
-              }}>
-              [CACHE] DATA FROM LOCAL STORAGE
-            </div>
-          )}
 
           {/* Test data indicator */}
           {nftDataInfo?.hasTestData && (
@@ -361,10 +479,14 @@ function InventoryModal({
                 border: "1px solid rgba(255, 149, 0, 0.3)",
                 fontWeight: "normal"
               }}>
-              [WARN] CONFIG ERROR: {errors.find((e) => e.isConfigurationError)?.message?.toUpperCase()}
+              [WARN] CONFIG ERROR:{" "}
+              {errors
+                .find((e) => e.isConfigurationError)
+                ?.message?.toUpperCase()}
               {errors.find((e) => e.suggestion) && (
                 <div style={{ marginTop: 2, fontSize: 8, color: "#ffcc66" }}>
-                  > {errors.find((e) => e.suggestion)?.suggestion?.toUpperCase()}
+                  {">"}{" "}
+                  {errors.find((e) => e.suggestion)?.suggestion?.toUpperCase()}
                 </div>
               )}
             </div>
@@ -386,7 +508,10 @@ function InventoryModal({
                 justifyContent: "space-between"
               }}>
               <span>
-                [ERROR] {errors.find((e) => !e.isConfigurationError)?.message?.toUpperCase()}
+                [ERROR]{" "}
+                {errors
+                  .find((e) => !e.isConfigurationError)
+                  ?.message?.toUpperCase()}
               </span>
               <button
                 onClick={handleRetry}
@@ -415,7 +540,7 @@ function InventoryModal({
                   fontWeight: "normal",
                   marginBottom: 8
                 }}>
-                > wallet.disconnect() executing...
+                {">"} wallet.disconnect() executing...
               </div>
               <div
                 style={{
@@ -438,7 +563,7 @@ function InventoryModal({
                     borderRadius: "50%",
                     animation: "spin 1s linear infinite"
                   }}></div>
-                > clearing cache memory...
+                {">"} clearing cache memory...
               </div>
             </>
           ) : !isConnected ? (
@@ -450,7 +575,7 @@ function InventoryModal({
                   fontWeight: "normal",
                   marginBottom: 8
                 }}>
-                > wallet connection required
+                {">"} cross-platform nft access
               </div>
               <div
                 style={{
@@ -460,11 +585,9 @@ function InventoryModal({
                   marginBottom: 12,
                   lineHeight: 1.4
                 }}>
-                > gasless transactions enabled
+                {">"} gasless transactions enabled
                 <br />
-                > email/social auth supported
-                <br />
-                > cross-platform nft access
+                {">"} email/social auth supported
               </div>
               {error && (
                 <div
@@ -508,38 +631,10 @@ function InventoryModal({
                       animation: "spin 1s linear infinite"
                     }}></div>
                 )}
-                {isConnecting
-                  ? "> connecting..."
-                  : "[CONNECT WALLET]"}
+                {isConnecting ? "connecting" : "CONNECT WALLET"}
               </button>
             </>
-          ) : (
-            <>
-              <div>
-                <button
-                  onClick={logout}
-                  disabled={isDisconnecting}
-                  style={{
-                    ...modernButtonStyle,
-                    opacity: isDisconnecting ? 0.5 : 1,
-                    cursor: isDisconnecting ? "not-allowed" : "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "4px"
-                  }}>
-                  {isDisconnecting && (
-                    <div
-                      style={{
-                        ...modernTextStyle,
-                        fontSize: "8px",
-                        fontWeight: "normal"
-                      }}></div>
-                  )}
-                  {isDisconnecting ? "> disconnecting..." : "[DISCONNECT]"}
-                </button>
-              </div>
-            </>
-          )}
+          ) : null}
         </section>
 
         <section
@@ -578,7 +673,7 @@ function InventoryModal({
                   borderRadius: "50%",
                   animation: "spin 1s linear infinite"
                 }}></div>
-              > session terminating...
+              {">"} session terminating...
             </div>
           ) : isLoading ? (
             <div
@@ -603,7 +698,7 @@ function InventoryModal({
                   borderRadius: "50%",
                   animation: "spin 1s linear infinite"
                 }}></div>
-              > loading nft database...
+              {">"} loading nft database...
             </div>
           ) : nfts.length === 0 ? (
             <div
@@ -616,10 +711,10 @@ function InventoryModal({
                 padding: "20px"
               }}>
               {!isConnected
-                ? "> wallet connection required"
+                ? "wallet connection required"
                 : errors.length > 0
-                  ? "> error loading nft data"
-                  : "> no nft records found"}
+                  ? "error loading nft data"
+                  : "no nft records found"}
             </div>
           ) : (
             nfts.map((n) => (
@@ -635,12 +730,16 @@ function InventoryModal({
                       : "1px solid rgba(255, 255, 255, 0.2)",
                   overflow: "hidden",
                   padding: 0,
-                  background: selectedNFT === n.id ? "rgba(255, 255, 255, 0.1)" : "rgba(255, 255, 255, 0.05)",
+                  background:
+                    selectedNFT === n.id
+                      ? "rgba(255, 255, 255, 0.1)"
+                      : "rgba(255, 255, 255, 0.05)",
                   cursor: "pointer",
                   transition: "all 0.2s ease",
-                  boxShadow: selectedNFT === n.id
-                    ? "0 8px 32px rgba(255, 255, 255, 0.2)"
-                    : "0 4px 16px rgba(0, 0, 0, 0.1)"
+                  boxShadow:
+                    selectedNFT === n.id
+                      ? "0 8px 32px rgba(255, 255, 255, 0.2)"
+                      : "0 4px 16px rgba(0, 0, 0, 0.1)"
                 }}>
                 <div
                   style={{

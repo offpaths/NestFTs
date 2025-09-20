@@ -1,4 +1,7 @@
 import { type Address } from "viem"
+import { createLogger } from "~utils/logger"
+
+const log = createLogger('AbstractWallet')
 
 // Abstract Global Wallet configuration
 export const ABSTRACT_CONFIG = {
@@ -37,7 +40,7 @@ export function getChainFromId(chainId: number): SupportedChain {
     case 11124: // Abstract Testnet
       return "abstract-testnet"
     default:
-      console.warn(`Unknown chain ID: ${chainId}, defaulting to ethereum`)
+      log.warn(`Unknown chain ID: ${chainId}, defaulting to ethereum`)
       return "ethereum"
   }
 }
@@ -103,7 +106,7 @@ export async function storeWalletConnection(address: Address): Promise<void> {
       })
     } catch (error: any) {
       if (error.message?.includes("Extension context invalidated")) {
-        console.warn(
+        log.debug(
           "Extension context invalidated during storage - this is expected during development"
         )
         return
@@ -121,7 +124,7 @@ export async function getStoredWalletConnection(): Promise<Address | null> {
       return result.abstractWalletAddress || null
     } catch (error: any) {
       if (error.message?.includes("Extension context invalidated")) {
-        console.warn(
+        log.debug(
           "Extension context invalidated during storage retrieval - this is expected during development"
         )
         return null
@@ -150,14 +153,14 @@ export async function clearWalletConnection(): Promise<void> {
 
       if (keysToRemove.length > 0) {
         await chrome.storage.local.remove(keysToRemove)
-        console.debug(
+        log.debug(
           `Cleared ${keysToRemove.length} cached NFT keys during disconnect`
         )
       }
     } catch (error: any) {
       // Handle extension context invalidation gracefully
       if (error.message?.includes("Extension context invalidated")) {
-        console.warn(
+        log.debug(
           "Extension context invalidated during storage cleanup - this is expected during development"
         )
         return
@@ -172,10 +175,10 @@ export async function clearAllExtensionData(): Promise<void> {
   if (typeof chrome !== "undefined" && chrome.storage) {
     try {
       await chrome.storage.local.clear()
-      console.debug("Cleared all extension data")
+      log.debug("Cleared all extension data")
     } catch (error: any) {
       if (error.message?.includes("Extension context invalidated")) {
-        console.warn(
+        log.debug(
           "Extension context invalidated during full cleanup - this is expected during development"
         )
         return
