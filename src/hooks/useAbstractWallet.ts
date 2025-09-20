@@ -27,7 +27,6 @@ export function useAbstractWallet(): UseAbstractWalletReturn {
   const [isDisconnecting, setIsDisconnecting] = useState(false)
   const [error, setError] = useState<string | undefined>()
 
-  // Use ref to track mounted state for cleanup
   const isMountedRef = useRef(true)
 
   useEffect(() => {
@@ -36,12 +35,10 @@ export function useAbstractWallet(): UseAbstractWalletReturn {
     }
   }, [])
 
-  // Use Abstract's native hooks
   const loginHook = useLoginWithAbstract()
   const agwLogin = loginHook.login
   const agwLogout = loginHook.logout
 
-  // Use the official Abstract account hook for connection state
   const {
     address,
     isConnected,
@@ -51,7 +48,6 @@ export function useAbstractWallet(): UseAbstractWalletReturn {
     status
   } = useGlobalWalletSignerAccount()
 
-  // Use Abstract's client hook to get wallet info
   const { data: client } = useAbstractClient() as { data: any }
 
 
@@ -59,7 +55,7 @@ export function useAbstractWallet(): UseAbstractWalletReturn {
   useEffect(() => {
     const walletAddress = client?.account?.address || address
     if (walletAddress && isConnected) {
-      storeWalletConnection(walletAddress).catch(console.error)
+      storeWalletConnection(walletAddress).catch(error => log.error('Failed to store wallet connection:', error))
     }
   }, [client?.account?.address, address, isConnected])
 

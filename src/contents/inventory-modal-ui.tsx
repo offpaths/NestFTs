@@ -89,61 +89,46 @@ let recentlyAddedComposeAreas: Set<Element> = new Set()
  * Finds the currently active compose area with enhanced robustness
  */
 function findActiveComposeArea(): Element | null {
-  // Strategy 1: Check for currently focused compose area
   const focusedElement = document.activeElement
   if (focusedElement && isValidComposeElement(focusedElement)) {
     return focusedElement
   }
 
-  // Strategy 2: Check recently detected compose areas from observer
   for (const recentArea of recentlyAddedComposeAreas) {
     if (isValidComposeElement(recentArea) && document.contains(recentArea)) {
       const score = scoreComposeElement(recentArea)
-      if (score > 30) { // High score threshold for recent areas
+      if (score > 30) {
         return recentArea
       }
     }
   }
 
-  // Strategy 3: Look for compose areas in Twitter modals/overlays (highest priority)
   const modalCompose = findModalComposeArea()
   if (modalCompose) {
     return modalCompose
   }
 
-  // Strategy 4: Enhanced visibility-based detection with scoring
   const visibleCompose = findBestVisibleComposeArea()
   if (visibleCompose) {
     return visibleCompose
   }
-
-  // Strategy 5: Expanded fallback selectors with modern Twitter patterns
   const composeSelectors = [
-    // Modern React-based selectors
     '[role="textbox"][data-testid*="tweet"]',
     '[role="textbox"][contenteditable="true"]',
     '[data-testid*="tweetTextarea"]',
     '[data-testid="tweetTextarea_0"]',
     '[data-testid*="replyTextarea"]',
     '[data-testid="dmComposerTextInput"]',
-
-    // Aria-based selectors for accessibility
     '[aria-label*="Post text"]',
     '[aria-label*="Tweet text"]',
     '[aria-label*="Reply"]',
     '[aria-label*="What is happening"]',
-
-    // Generic fallbacks
     '[role="textbox"]',
     '[contenteditable="true"][data-text]',
-    'div[contenteditable="true"]:not([data-slate-editor])', // Exclude other editors
-
-    // Legacy selectors
+    'div[contenteditable="true"]:not([data-slate-editor])',
     '.tweet-box',
     '.compose-text'
   ]
-
-  // Try selectors with validation and scoring
   let bestElement = null
   let bestScore = 0
 

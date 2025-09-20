@@ -10,7 +10,6 @@ import { retryNFTFetch } from "~utils/retry-utility"
 
 const log = createLogger('NFTService')
 
-// NFT metadata interface
 export interface NFTMetadata {
   id: string
   name: string
@@ -21,7 +20,6 @@ export interface NFTMetadata {
   contractAddress?: string
 }
 
-// API response interfaces
 interface OpenSeaAsset {
   identifier: string
   collection: string
@@ -39,7 +37,6 @@ interface OpenSeaResponse {
   next: string | null
 }
 
-// Network configurations
 type SupportedChain = "ethereum" | "abstract-mainnet" | "abstract-testnet"
 
 interface ChainConfig {
@@ -142,7 +139,7 @@ function validateImageUrl(url: string | null): string {
 
     // Allow both HTTP and HTTPS for development/testing, but prefer HTTPS
     if (parsedUrl.protocol !== "https:" && parsedUrl.protocol !== "http:") {
-      console.warn(`Rejecting URL with unsupported protocol: ${parsedUrl.protocol}`)
+      log.debug(`Rejecting URL with unsupported protocol: ${parsedUrl.protocol}`)
       return NFT_API_CONFIG.FALLBACK_IMAGE
     }
 
@@ -162,14 +159,14 @@ function validateImageUrl(url: string | null): string {
     const isMetadataUri = url.includes('/metadata/') || url.includes('.json')
 
     if (hasValidExtension || isTrustedDomain || isMetadataUri) {
-      console.log(`Accepting image URL: ${url}`)
+      log.debug(`Accepting image URL: ${url}`)
       return url
     }
 
-    console.warn(`Rejecting image URL - not trusted domain or extension: ${url}`)
+    log.debug(`Rejecting image URL - not trusted domain or extension: ${url}`)
     return NFT_API_CONFIG.FALLBACK_IMAGE
   } catch (error) {
-    console.warn(`Error parsing image URL: ${url}`, error)
+    log.debug(`Error parsing image URL: ${url}`, error)
     return NFT_API_CONFIG.FALLBACK_IMAGE
   }
 }
@@ -636,10 +633,6 @@ export async function fetchUserNFTs(
 ): Promise<{ nfts: NFTMetadata[]; errors?: NFTFetchError[] }> {
   const errors: NFTFetchError[] = []
 
-  debugLog(`Starting NFT fetch:`, {
-    chain,
-    address: formatAddress(address as Address)
-  })
 
   try {
     // Handle Abstract testnet specially
@@ -688,29 +681,22 @@ export async function fetchUserNFTs(
     if (chainConfig?.alchemy) {
       try {
         const nfts = await fetchNFTsFromAlchemy(address, chain)
-        debugLog(`Alchemy fetch successful: ${nfts.length} NFTs`)
         return { nfts }
       } catch (alchemyError) {
         const nftError = createNFTError("alchemy", alchemyError)
         errors.push(nftError)
-        debugError("Alchemy fetch failed, trying OpenSea fallback:", nftError)
       }
-    } else {
-      debugLog(`Alchemy not available for ${chain}, trying OpenSea directly`)
     }
 
     // Fallback to OpenSea
     const nfts = await fetchNFTsFromOpenSea(address, chain)
-    debugLog(`OpenSea fallback successful: ${nfts.length} NFTs`)
     return { nfts, errors: errors.length > 0 ? errors : undefined }
   } catch (openSeaError) {
     const openSeaNftError = createNFTError("opensea", openSeaError)
     errors.push(openSeaNftError)
-    debugError("OpenSea fallback also failed:", openSeaNftError)
   }
 
   // Return empty results with all errors
-  debugError(`All NFT fetch methods failed for ${chain}:`, errors)
   return { nfts: [], errors }
 }
 

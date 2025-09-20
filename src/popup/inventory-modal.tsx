@@ -634,33 +634,7 @@ function InventoryModal({
                 {isConnecting ? "connecting" : "CONNECT WALLET"}
               </button>
             </>
-          ) : (
-            <>
-              {/* <div>
-                <button
-                  onClick={logout}
-                  disabled={isDisconnecting}
-                  style={{
-                    ...modernButtonStyle,
-                    opacity: isDisconnecting ? 0.5 : 1,
-                    cursor: isDisconnecting ? "not-allowed" : "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "4px"
-                  }}>
-                  {isDisconnecting && (
-                    <div
-                      style={{
-                        ...modernTextStyle,
-                        fontSize: "8px",
-                        fontWeight: "normal"
-                      }}></div>
-                  )}
-                  {isDisconnecting ? "> disconnecting..." : "[DISCONNECT]"}
-                </button>
-              </div> */}
-            </>
-          )}
+          ) : null}
         </section>
 
         <section
