@@ -1,6 +1,6 @@
 # NFT Troubleshooting Guide
 
-This guide helps you troubleshoot NFT discovery issues in the Niftory extension.
+This guide helps you troubleshoot NFT discovery issues in the NestFTs extension.
 
 ## Quick Setup
 
@@ -30,6 +30,7 @@ NODE_ENV=development
 ### 2. Get API Keys
 
 **Alchemy Access Token (Recommended Primary):**
+
 1. Visit [Alchemy.com](https://www.alchemy.com/) and sign up
 2. Create a new app for Ethereum Mainnet
 3. Copy the **Access Token** for NFT API from your dashboard
@@ -39,6 +40,7 @@ NODE_ENV=development
 5. Alchemy provides better rate limits and specialized NFT endpoints
 
 **OpenSea API Key (Optional Fallback):**
+
 1. Visit [OpenSea Developer Portal](https://docs.opensea.io/reference/api-keys)
 2. Create an account and request an API key
 3. Add the key to your `.env` file for additional fallback
@@ -48,12 +50,14 @@ NODE_ENV=development
 ### "No NFTs found in your wallet"
 
 **Possible Causes:**
+
 1. **Missing API key** - Alchemy API key recommended for reliable access
 2. **Rate limiting** - Too many requests without an API key
 3. **Network mismatch** - Wallet on different network than expected
 4. **Empty wallet** - Wallet actually has no NFTs
 
 **Solutions:**
+
 1. **Add Alchemy Access Token** (most common fix - better performance)
    - Make sure you're using the **Access Token** for NFT API
    - Access token starts with `alcht_` prefix and is for NFT endpoints
@@ -71,6 +75,7 @@ NODE_ENV=development
 
 **Cause:** Invalid API key
 **Solutions:**
+
 1. Verify Alchemy API key is correct in `.env` file
 2. Check API key hasn't been revoked
 3. Ensure no extra spaces/characters in key
@@ -79,6 +84,7 @@ NODE_ENV=development
 ### "Failed to load NFTs - check the errors above"
 
 **Solutions:**
+
 1. Check browser console for detailed error messages
 2. Click "Retry" button in error message
 3. Refresh page and try again
@@ -86,6 +92,7 @@ NODE_ENV=development
 ### Abstract Testnet Wallets
 
 Currently, Abstract testnet doesn't have NFT indexing services available. The extension shows:
+
 - **Mock test NFTs** for demonstration purposes
 - **Chain indicator** showing "Abstract Testnet"
 - **Limited functionality** until indexing services become available
@@ -95,11 +102,13 @@ Currently, Abstract testnet doesn't have NFT indexing services available. The ex
 ### Enable Debug Mode
 
 Set in `.env`:
+
 ```env
 NODE_ENV=development
 ```
 
 This enables detailed console logging showing:
+
 - API request details
 - Chain detection
 - Error specifics
@@ -115,6 +124,7 @@ This enables detailed console logging showing:
 ### Test Wallet Connection
 
 The modal shows:
+
 - ✅ **Connected wallet address**
 - 🔗 **Network/chain name**
 - ⚠️ **Configuration warnings**
@@ -122,21 +132,21 @@ The modal shows:
 
 ## Common Error Messages
 
-| Error | Meaning | Solution |
-|-------|---------|----------|
-| "Invalid wallet address format" | Address validation failed | Check wallet connection |
-| "OpenSea API error: 429" | Rate limited | Add Alchemy/OpenSea API key |
-| "OpenSea API error: 401" | Authentication failed | Check API key |
-| "Alchemy access token not configured" | Missing Alchemy NFT access token | Add Alchemy access token |
-| "Request timeout" | Network/server issue | Check connection, retry |
+| Error                                 | Meaning                          | Solution                    |
+| ------------------------------------- | -------------------------------- | --------------------------- |
+| "Invalid wallet address format"       | Address validation failed        | Check wallet connection     |
+| "OpenSea API error: 429"              | Rate limited                     | Add Alchemy/OpenSea API key |
+| "OpenSea API error: 401"              | Authentication failed            | Check API key               |
+| "Alchemy access token not configured" | Missing Alchemy NFT access token | Add Alchemy access token    |
+| "Request timeout"                     | Network/server issue             | Check connection, retry     |
 
 ## Network Support
 
-| Network | NFT Support | Notes |
-|---------|-------------|-------|
-| Ethereum Mainnet | ✅ Full | Alchemy (primary) + OpenSea (fallback) |
-| Abstract Testnet | ⚠️ Limited | Mock data only |
-| Other Networks | ❌ Not supported | May show as Ethereum |
+| Network          | NFT Support      | Notes                                  |
+| ---------------- | ---------------- | -------------------------------------- |
+| Ethereum Mainnet | ✅ Full          | Alchemy (primary) + OpenSea (fallback) |
+| Abstract Testnet | ⚠️ Limited       | Mock data only                         |
+| Other Networks   | ❌ Not supported | May show as Ethereum                   |
 
 ## Getting Help
 
@@ -149,7 +159,7 @@ The modal shows:
 ## Development Notes
 
 - Extension caches NFT data for 5 minutes
-- API requests timeout after 15 seconds  
+- API requests timeout after 15 seconds
 - Supports common image formats: JPG, PNG, GIF, WebP, SVG
 - Uses secure HTTPS-only image sources
 - Sanitizes all NFT metadata for security

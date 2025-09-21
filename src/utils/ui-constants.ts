@@ -8,9 +8,9 @@ export const BUTTON_CONSTANTS = {
   MARGIN_LEFT: "4px",
   BORDER_RADIUS: "9999px",
 
-  // SVG icon dimensions
-  ICON_WIDTH: "18",
-  ICON_HEIGHT: "18",
+  // SVG icon dimensions - increased for better visibility
+  ICON_WIDTH: "22",
+  ICON_HEIGHT: "22",
 
   // Colors matching Twitter/X theme
   ICON_COLOR: "rgb(231, 233, 234)", // Secondary gray
