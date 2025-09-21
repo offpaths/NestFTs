@@ -1,13 +1,14 @@
 import { type Address } from "viem"
+
 import { createLogger } from "~utils/logger"
 
-const log = createLogger('AbstractWallet')
+const log = createLogger("AbstractWallet")
 
 // Abstract Global Wallet configuration
 export const ABSTRACT_CONFIG = {
-  appName: "Niftory",
+  appName: "NestFTs",
   appDescription: "Twitter/X NFT Inventory Extension",
-  appIcon: "https://niftory.app/icon.png", // Replace with actual icon URL
+  appIcon: "https://raw.githubusercontent.com/offpaths/NestFTs/master/assets/icon.png", // GitHub raw file URL
   mainnetChainId: 2741, // Abstract mainnet chain ID
   testnetChainId: 11124, // Abstract testnet chain ID
   mainnetRpcUrl: "https://api.mainnet.abs.xyz",
@@ -145,11 +146,21 @@ export async function clearWalletConnection(): Promise<void> {
         "abstractWalletConnectedAt"
       ])
 
-      // Clear any NFT cache data
-      const allData = await chrome.storage.local.get(null)
-      const keysToRemove = Object.keys(allData || {}).filter(
-        (key) => key.startsWith("nft_cache_") || key.startsWith("nftory_")
-      )
+      // Clear any NFT cache data - use specific key patterns for security
+      const nftCacheKeys = []
+      for (let i = 0; i < 50; i++) { // Reasonable upper limit for cache entries
+        const key = `nft_cache_${i}`
+        try {
+          const result = await chrome.storage.local.get(key)
+          if (result[key]) nftCacheKeys.push(key)
+        } catch (e) {
+          break // Stop if key doesn't exist
+        }
+      }
+
+      // Also check for nftory-specific keys
+      const nftoryKeys = ['nftory_last_fetch', 'nftory_config', 'nftory_session']
+      const keysToRemove = [...nftCacheKeys, ...nftoryKeys]
 
       if (keysToRemove.length > 0) {
         await chrome.storage.local.remove(keysToRemove)

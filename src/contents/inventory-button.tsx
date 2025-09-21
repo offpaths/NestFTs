@@ -1,8 +1,10 @@
 import cssText from "data-text:~style.css"
+import iconSvg from "data-text:../../assets/NestFTs_logo.svg"
 
 import AppConfig from "~utils/app-config"
 import globalContentConfig from "~utils/content-config"
 import { createLogger } from "~utils/logger"
+import { validatePublicUrl, sanitizeFilename } from "~utils/security-utils"
 import { ANIMATION_CONSTANTS, BUTTON_CONSTANTS } from "~utils/ui-constants"
 
 const plasmoconfig = globalContentConfig
@@ -48,21 +50,39 @@ export const getStyle = (): HTMLStyleElement => {
 
   return styleElement
 }
-// Aggressive scanning for initial page loads
+// Enhanced aggressive scanning for initial page loads
 function startInitialScanning() {
   let scanCount = 0
-  const MAX_SCANS = 10 // Stop after 10 scans
-  const INITIAL_INTERVAL = 200 // 200ms = fast scanning
+  const MAX_SCANS = 20 // Increased from 10 to 20 scans
+  const INITIAL_INTERVAL = 150 // Reduced from 200ms to 150ms for faster scanning
 
   const periodicScanner = setInterval(() => {
-    scanAndInjectNiftoryIcon()
+    const result = scanAndInjectNiftoryIcon()
     scanCount++
+
+    // Log progress for debugging
+    if (scanCount % 5 === 0) {
+      log.debug(`Scan progress: ${scanCount}/${MAX_SCANS}, found toolbars: ${result.toolbarsFound}, injected: ${result.buttonsInjected}`)
+    }
 
     if (scanCount >= MAX_SCANS) {
       clearInterval(periodicScanner)
-      log.debug("Stopped periodic scanning after initial load period")
+      log.debug(`Stopped periodic scanning after ${scanCount} scans`)
     }
   }, INITIAL_INTERVAL)
+}
+
+// Additional scanning trigger for delayed content
+function startDelayedScanning() {
+  // Additional scans at longer intervals for slow-loading content
+  const delays = [1000, 2000, 3000, 5000] // 1s, 2s, 3s, 5s after initial load
+
+  delays.forEach(delay => {
+    setTimeout(() => {
+      const result = scanAndInjectNiftoryIcon()
+      log.debug(`Delayed scan at ${delay}ms: found ${result.toolbarsFound} toolbars, injected ${result.buttonsInjected} buttons`)
+    }, delay)
+  })
 }
 
 // Cache for SVG element to avoid recreation
@@ -73,21 +93,25 @@ function createCachedSvgIcon(): SVGElement {
     return cachedSvgElement.cloneNode(true) as SVGElement
   }
 
-  // Create SVG safely without innerHTML to prevent XSS
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg")
-  svg.setAttribute("viewBox", "0 0 24 24")
+  // Create a temporary container to parse the imported SVG safely
+  const parser = new DOMParser()
+  const svgDoc = parser.parseFromString(iconSvg, 'image/svg+xml')
+
+  const svg = svgDoc.querySelector("svg") as SVGElement
+  if (!svg) {
+    throw new Error("Invalid SVG content from assets")
+  }
+
+  // Update SVG attributes for button sizing
   svg.setAttribute("width", BUTTON_CONSTANTS.ICON_WIDTH)
   svg.setAttribute("height", BUTTON_CONSTANTS.ICON_HEIGHT)
   svg.setAttribute("aria-hidden", "true")
 
-  const path = document.createElementNS("http://www.w3.org/2000/svg", "path")
-  path.setAttribute(
-    "d",
-    "M12 2L2 7l10 5 10-5-10-5zm0 6.5l10 5v8l-10-5-10 5v-8l10-5z"
-  )
-  path.setAttribute("fill", BUTTON_CONSTANTS.ICON_FILL_COLOR)
-
-  svg.appendChild(path)
+  // Update the fill color to match button constants
+  const path = svg.querySelector("path")
+  if (path) {
+    path.setAttribute("style", `fill:${BUTTON_CONSTANTS.ICON_FILL_COLOR};fill-opacity:1;stroke:${BUTTON_CONSTANTS.ICON_FILL_COLOR};stroke-opacity:1;stroke-width:3;stroke-dasharray:none`)
+  }
 
   // Cache the SVG element
   cachedSvgElement = svg.cloneNode(true) as SVGElement
@@ -100,7 +124,7 @@ function setButtonStyleAndAttribs(btn: HTMLButtonElement) {
   btn.type = "button"
   btn.setAttribute("aria-label", "NFT Inventory")
 
-  // Apply styles using cssText for better performance
+  // Apply enhanced styles for better visibility
   btn.style.cssText = `
     display: inline-flex;
     align-items: center;
@@ -108,12 +132,14 @@ function setButtonStyleAndAttribs(btn: HTMLButtonElement) {
     width: ${BUTTON_CONSTANTS.WIDTH};
     height: ${BUTTON_CONSTANTS.HEIGHT};
     margin-left: ${BUTTON_CONSTANTS.MARGIN_LEFT};
-    border: none;
-    background: transparent;
+    border: 1px solid rgba(29,155,240,0.3);
+    background: rgba(29,155,240,0.08);
     cursor: pointer;
     border-radius: ${BUTTON_CONSTANTS.BORDER_RADIUS};
     transition: ${ANIMATION_CONSTANTS.BUTTON_TRANSITION};
     color: ${BUTTON_CONSTANTS.ICON_COLOR};
+    box-shadow: 0 0 8px rgba(29,155,240,0.2);
+    position: relative;
   `
 
   // Use cached SVG icon
@@ -126,12 +152,16 @@ function createNFTButton(): HTMLButtonElement {
 
   setButtonStyleAndAttribs(btn)
 
-  // Hover effect like native buttons
+  // Enhanced hover effect for better visibility
   btn.addEventListener("mouseenter", () => {
-    btn.style.backgroundColor = BUTTON_CONSTANTS.HOVER_BG_COLOR
+    btn.style.backgroundColor = "rgba(29,155,240,0.15)"
+    btn.style.boxShadow = "0 0 12px rgba(29,155,240,0.4)"
+    btn.style.borderColor = "rgba(29,155,240,0.5)"
   })
   btn.addEventListener("mouseleave", () => {
-    btn.style.backgroundColor = "transparent"
+    btn.style.backgroundColor = "rgba(29,155,240,0.08)"
+    btn.style.boxShadow = "0 0 8px rgba(29,155,240,0.2)"
+    btn.style.borderColor = "rgba(29,155,240,0.3)"
   })
 
   btn.addEventListener("click", (e: MouseEvent) => {
@@ -689,11 +719,8 @@ async function handleDrop(event: DragEvent) {
 
       // Validate and convert URL to File object
       try {
-        // Security: Validate URL scheme to prevent internal network access
-        const url = new URL(imageUrl)
-        if (!["http:", "https:"].includes(url.protocol)) {
-          throw new Error("Invalid URL protocol - only HTTP/HTTPS allowed")
-        }
+        // Security: Validate URL to prevent internal network access
+        validatePublicUrl(imageUrl)
 
         const response = await fetch(imageUrl, { mode: "cors" })
         if (!response.ok) {
@@ -701,7 +728,7 @@ async function handleDrop(event: DragEvent) {
         }
 
         const blob = await response.blob()
-        const filename = `${nftName.replace(/[^a-zA-Z0-9]/g, "_") || "nft"}.png`
+        const filename = `${sanitizeFilename(nftName) || "nft"}.png`
         const file = new File([blob], filename, { type: "image/png" })
 
         log.debug("Converted URL to file:", {
@@ -985,12 +1012,25 @@ function isValidComposeArea(element: Element): boolean {
 function scanAndInjectNiftoryIcon() {
   // Find all toolbars in replies, tweets, and modals
   const toolbars = document.querySelectorAll('div[data-testid="toolBar"]')
+  let buttonsInjected = 0
+
   toolbars.forEach((toolbar) => {
-    injectButton(toolbar)
+    // Check if button already exists
+    const existingButton = toolbar.querySelector(`#${appconfig.BTN_ID}`)
+    if (!existingButton) {
+      injectButton(toolbar)
+      buttonsInjected++
+    }
   })
 
   // Also set up drop zones for NFT drag and drop
   setupDropZones()
+
+  // Return scan results for debugging
+  return {
+    toolbarsFound: toolbars.length,
+    buttonsInjected: buttonsInjected
+  }
 }
 
 // Watch for SPA navigation and DOM updates
@@ -1005,17 +1045,34 @@ const navigationObserver = new MutationObserver(() => {
     lastUrl = url
     log.debug("Navigation detected, starting aggressive scanning")
     startInitialScanning() // New page loaded
+    startDelayedScanning() // Also start delayed scanning for slow content
   }
 })
 navigationObserver.observe(document, { subtree: true, childList: true })
 
 window.addEventListener("load", () => {
-  log.debug("Page load detected, starting initial scanning")
+  log.debug("Page load detected, starting initial and delayed scanning")
   startInitialScanning()
+  startDelayedScanning()
 })
 
 // Also start immediately in case we missed the load event
 startInitialScanning()
+startDelayedScanning()
+
+// Handle tab visibility changes (when user switches back to Twitter tab)
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) {
+    log.debug("Tab became visible, running button scan")
+    setTimeout(() => scanAndInjectNiftoryIcon(), 100)
+  }
+})
+
+// Handle page focus events
+window.addEventListener("focus", () => {
+  log.debug("Window focused, running button scan")
+  setTimeout(() => scanAndInjectNiftoryIcon(), 100)
+})
 
 /**
  * Removes drag and drop listeners (cleanup)
